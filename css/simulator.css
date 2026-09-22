@@ -3,8 +3,9 @@
    =================================================================== */
 .sim-page { overflow: hidden; }
 .sim-app {
-  display: grid; height: 100vh;
-  grid-template-columns: 250px minmax(360px, 1fr) 5px var(--out-w);
+  --pal-w: 250px;
+  display: grid; height: 100vh; height: 100dvh;
+  grid-template-columns: var(--pal-w) minmax(360px, 1fr) 5px var(--out-w);
   grid-template-rows: auto minmax(0, 1fr);
   grid-template-areas: "top top top top" "left center gutter right";
 }
@@ -81,7 +82,7 @@
 .help-grid ul { margin: 0; padding-left: 18px; }
 
 @media (max-width: 1100px) {
-  .sim-app { grid-template-columns: 210px minmax(320px, 1fr) 5px 340px; }
+  .sim-app { --pal-w: 210px; }
 }
 @media (max-width: 860px) {
   .sim-page { overflow: auto; }
@@ -90,7 +91,7 @@
 }
 
 /* ================================================================ 혼합 신호 시뮬레이터 추가 */
-.sim-app.no-inst { grid-template-columns: 250px minmax(360px, 1fr) 0 0; }
+.sim-app.no-inst { grid-template-columns: var(--pal-w) minmax(360px, 1fr) 0 0; }
 .sim-app.no-inst > .output, .sim-app.no-inst > .gutter { display: none; }
 .pal-search { margin: 4px 8px 6px; width: calc(100% - 16px); padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--card2); color: var(--fg); font-size: 13px; }
 .pal-cat { display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; padding: 3px 4px; border-radius: 6px; }
@@ -123,3 +124,46 @@
 .set-tbl td, .set-tbl th { padding: 5px 8px; vertical-align: middle; }
 .set-tbl input[type=text], .set-tbl select { width: 140px; padding: 4px 7px; border: 1px solid var(--line); border-radius: 6px; background: var(--card2); color: var(--fg); font-family: var(--mono); }
 .drop-hint { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(14, 165, 233, .12); border: 3px dashed #0ea5e9; font-weight: 800; color: #0369a1; z-index: 30; pointer-events: none; }
+
+/* ================================================================ 계측기 위치 (오른쪽 · 왼쪽 · 아래 · 떠 있는 창) */
+.sim-app.dock-left { grid-template-columns: var(--pal-w) var(--out-w) 5px minmax(360px, 1fr); grid-template-areas: "top top top top" "left right gutter center"; }
+.sim-app.dock-left > .output { border-left: none; border-right: 1px solid #262c36; }
+.sim-app.dock-bottom { grid-template-columns: var(--pal-w) minmax(360px, 1fr); grid-template-rows: auto minmax(160px, 1fr) 5px var(--out-h, 38vh); grid-template-areas: "top top" "left center" "left gutter" "left right"; }
+.sim-app.dock-bottom > .gutter { cursor: row-resize; }
+.sim-app.dock-bottom > .output { border-left: none; border-top: 1px solid #262c36; }
+.sim-app.dock-bottom .ip-body { flex-direction: row; flex-wrap: wrap; align-items: flex-start; align-content: flex-start; }
+.sim-app.dock-bottom .ip-body > .ip-card { flex: 1 1 340px; max-width: 640px; }
+.sim-app.dock-bottom .ip-body > .ip-help { flex: 1 1 100%; }
+.sim-app.dock-bottom .sc-screen { aspect-ratio: auto; height: 190px; }
+.sim-app.dock-float { grid-template-columns: var(--pal-w) minmax(360px, 1fr) 0 0; }
+.sim-app.dock-float > .gutter { display: none; }
+.sim-app.dock-float > .output {
+  position: fixed; z-index: 400; left: var(--fl-x, auto); top: var(--fl-y, 70px); right: auto;
+  width: var(--fl-w, 420px); height: var(--fl-h, 70vh); min-width: 300px; min-height: 180px; max-width: 96vw; max-height: 94vh;
+  border: 1px solid #30363d; border-radius: 12px; overflow: hidden; resize: both; box-shadow: 0 18px 50px rgba(0, 0, 0, .45);
+}
+.sim-app.dock-float .ip-head { cursor: move; user-select: none; }
+.sim-app.no-inst.dock-left, .sim-app.no-inst.dock-float { grid-template-columns: var(--pal-w) 0 0 minmax(360px, 1fr); }
+.sim-app.no-inst.dock-float { grid-template-columns: var(--pal-w) minmax(360px, 1fr) 0 0; }
+.sim-app.no-inst.dock-bottom { grid-template-rows: auto minmax(0, 1fr) 0 0; }
+/* 창이 작아도 카드가 눌려 잘리지 않고 창 전체가 스크롤되도록 */
+.instrument-panel { flex: 1; min-height: 0; height: auto; }
+.ip-body { min-height: 0; overscroll-behavior: contain; }
+.ip-card { flex: none; }
+.ip-dock { display: inline-flex; gap: 2px; margin-left: 4px; }
+.ip-dock button { width: 24px; height: 22px; border: 1px solid #30363d; background: #0d1117; color: #9aa4b5; border-radius: 5px; cursor: pointer; font-size: 12px; line-height: 1; padding: 0; }
+.ip-dock button:hover { border-color: #58a6ff; color: #e6edf3; }
+.ip-dock button.on { background: #1f6feb; border-color: #1f6feb; color: #fff; }
+@media (max-height: 640px) {
+  .sim-top { padding: 4px 10px; gap: 4px; }
+  .sim-status { display: none; }
+  .sim-app { grid-template-rows: auto minmax(0, 1fr); }
+}
+@media (max-width: 860px) {
+  .sim-app, .sim-app.dock-left, .sim-app.dock-bottom, .sim-app.dock-float {
+    grid-template-columns: 1fr; grid-template-rows: auto auto 70vh 0 90vh; grid-template-areas: "top" "left" "center" "gutter" "right"; height: auto;
+  }
+  .sim-app.dock-float > .output { position: static; width: auto; height: auto; resize: none; border-radius: 0; box-shadow: none; }
+  .ip-dock { display: none; }
+}
+.ip-head { flex-wrap: wrap; row-gap: 4px; }

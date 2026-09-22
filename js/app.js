@@ -127,16 +127,104 @@
   });
   view.on('rebuild', updateInfo);
 
-  // 오른쪽 창 너비 조절
+  // ------------------------------------------------------------------ 계측기 위치 (오른쪽 · 왼쪽 · 아래 · 떠 있는 창)
+  const DOCKS = [['right', '◨', '오른쪽'], ['left', '◧', '왼쪽'], ['bottom', '⬓', '아래'], ['float', '⧉', '떠 있는 창 (끌어서 이동 · 모서리로 크기 조절)']];
+  const app = $('app'), outPane = $('output'), rootStyle = document.documentElement.style;
+  let dock = store.get('jc.dock', 'right');
+  const outH = store.get('jc.simOutH', '');
+  if (outH) rootStyle.setProperty('--out-h', outH);
+  const head = panel.host.querySelector('.ip-head');
+  head.insertAdjacentHTML('beforeend', `<span class="ip-dock" title="계측기 위치">${DOCKS.map(([k, ic, t]) => `<button data-dock="${k}" title="계측기 위치: ${t}">${ic}</button>`).join('')}</span>`);
+  head.querySelector('.ip-dock').addEventListener('click', (e) => { const b = e.target.closest('[data-dock]'); if (b) setDock(b.dataset.dock); });
+  function setDock(d) {
+    dock = DOCKS.some(([k]) => k === d) ? d : 'right';
+    DOCKS.forEach(([k]) => app.classList.toggle('dock-' + k, k === dock));
+    head.querySelectorAll('[data-dock]').forEach((b) => b.classList.toggle('on', b.dataset.dock === dock));
+    const g = document.querySelector('[data-resize]');
+    g.title = dock === 'bottom' ? '드래그하여 높이 조절' : '드래그하여 너비 조절';
+    store.set('jc.dock', dock);
+    if (dock === 'float') placeFloat();
+    if (app.classList.contains('no-inst')) { app.classList.remove('no-inst'); store.set('jc.inst', '1'); }
+    setTimeout(() => { panel.scope.draw(); panel.drawBode(); }, 30);
+  }
+  /** 떠 있는 창: 저장된 위치 · 크기, 화면 밖으로 나가지 않게 */
+  function placeFloat() {
+    let box = {};
+    try { box = JSON.parse(store.get('jc.floatBox', '{}')) || {}; } catch (e) { box = {}; }
+    const W = window.innerWidth, H = window.innerHeight;
+    const w = Math.min(Math.max(300, box.w || 430), W - 20), h = Math.min(Math.max(180, box.h || Math.round(H * 0.72)), H - 20);
+    const x = Math.min(Math.max(4, box.x != null ? box.x : W - w - 16), W - Math.min(w, 120));
+    let y = Math.min(Math.max(4, box.y != null ? box.y : 64), H - 40);
+    if (y + 180 > H - 8) y = Math.max(4, H - 188);
+    rootStyle.setProperty('--fl-x', x + 'px'); rootStyle.setProperty('--fl-y', y + 'px');
+    rootStyle.setProperty('--fl-w', w + 'px'); rootStyle.setProperty('--fl-h', Math.min(h, H - y - 8) + 'px');
+    outPane.style.width = ''; outPane.style.height = '';
+  }
+  function saveFloat() {
+    if (dock !== 'float') return;
+    const r = outPane.getBoundingClientRect();
+    store.set('jc.floatBox', JSON.stringify({ x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) }));
+  }
+  // 떠 있는 창을 머리글로 끌어 옮기기
+  head.addEventListener('pointerdown', (e) => {
+    if (dock !== 'float' || e.button !== 0 || e.target.closest('button, input, select')) return;
+    e.preventDefault();
+    const r = outPane.getBoundingClientRect(), sx = e.clientX, sy = e.clientY;
+    head.setPointerCapture(e.pointerId);
+    const move = (ev) => {
+      const x = Math.min(Math.max(0, r.left + ev.clientX - sx), window.innerWidth - 80);
+      const y = Math.min(Math.max(0, r.top + ev.clientY - sy), window.innerHeight - 36);
+      rootStyle.setProperty('--fl-x', x + 'px'); rootStyle.setProperty('--fl-y', y + 'px');
+    };
+    const up = () => {
+      head.removeEventListener('pointermove', move); head.removeEventListener('pointerup', up);
+      // 아래가 화면 밖으로 나가면 높이를 줄여 끝까지 스크롤할 수 있게
+      const q = outPane.getBoundingClientRect();
+      if (q.bottom > window.innerHeight - 4) {
+        const y = Math.min(q.top, window.innerHeight - 188);
+        rootStyle.setProperty('--fl-y', Math.max(0, y) + 'px');
+        rootStyle.setProperty('--fl-h', Math.max(180, window.innerHeight - Math.max(0, y) - 8) + 'px');
+      }
+      saveFloat();
+    };
+    head.addEventListener('pointermove', move);
+    head.addEventListener('pointerup', up);
+  });
+  // 모서리로 크기를 바꾸면 기억 (CSS resize)
+  if (window.ResizeObserver) {
+    let t = 0;
+    new ResizeObserver(() => {
+      if (dock !== 'float') return;
+      clearTimeout(t);
+      t = setTimeout(() => {
+        const r = outPane.getBoundingClientRect();
+        rootStyle.setProperty('--fl-w', Math.round(r.width) + 'px'); rootStyle.setProperty('--fl-h', Math.round(r.height) + 'px');
+        outPane.style.width = ''; outPane.style.height = '';
+        saveFloat();
+        panel.scope.draw(); panel.drawBode();
+      }, 120);
+    }).observe(outPane);
+  }
+  window.addEventListener('resize', () => { if (dock === 'float') placeFloat(); });
+  setDock(dock);
+
+  // 계측기 창 크기 조절 (오른쪽 · 왼쪽 = 너비, 아래 = 높이)
   document.querySelectorAll('[data-resize]').forEach((g) => {
     g.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       g.setPointerCapture(e.pointerId);
+      g.classList.add('drag');
       const move = (ev) => {
-        const w = Math.max(300, Math.min(window.innerWidth * 0.55, window.innerWidth - ev.clientX)) + 'px';
-        document.documentElement.style.setProperty('--out-w', w); store.set('jc.simOutW', w);
+        if (dock === 'bottom') {
+          const h = Math.max(140, Math.min(window.innerHeight * 0.75, window.innerHeight - ev.clientY)) + 'px';
+          rootStyle.setProperty('--out-h', h); store.set('jc.simOutH', h);
+          return;
+        }
+        const px = dock === 'left' ? ev.clientX - outPane.getBoundingClientRect().left : window.innerWidth - ev.clientX;
+        const w = Math.max(300, Math.min(window.innerWidth * 0.6, px)) + 'px';
+        rootStyle.setProperty('--out-w', w); store.set('jc.simOutW', w);
       };
-      const up = () => { g.removeEventListener('pointermove', move); g.removeEventListener('pointerup', up); };
+      const up = () => { g.classList.remove('drag'); g.removeEventListener('pointermove', move); g.removeEventListener('pointerup', up); panel.scope.draw(); panel.drawBode(); };
       g.addEventListener('pointermove', move);
       g.addEventListener('pointerup', up);
     });
@@ -367,7 +455,7 @@
       <div><h4>배선 · 편집</h4><ul><li><b>╱ 도선</b>으로 단자에서 단자까지 끕니다. 단자가 도선 <b>중간</b>에 닿아도 연결됩니다. 멀리 있는 점은 같은 이름의 <b>이름표(N)</b>로 잇습니다.</li>
         <li>연결 안 된 단자는 <span style="color:#ef4444">빨간 동그라미</span>. 선택 후 화살표 키로 한 칸씩 이동, <kbd>Ctrl</kbd>+<kbd>C</kbd>/<kbd>V</kbd>/<kbd>D</kbd>/<kbd>Z</kbd>/<kbd>Y</kbd>.</li></ul></div>
       <div><h4>측정 · 조작</h4><ul><li>마우스를 올리면 전압 · 논리값 · 전류 · 전력이 보입니다. 스위치 · 버튼 · DIP · 클럭은 눌러서 조작합니다.</li>
-        <li>오른쪽 계측기: 멀티미터, 2채널 오실로스코프, 8채널 로직 분석기, 로직 프로브, 입출력판, 진리표, <b>주파수 응답(보드 선도)</b> — 교류 전원이 있는 회로에서 ▶ 측정 을 누르면 이득 · 위상 · −3 dB 주파수를 잽니다. 점 · 부품에서 <b>오른쪽 버튼을 짧게</b> 누르면 바로 연결 메뉴.</li></ul></div>
+        <li>오른쪽 계측기: 멀티미터, 2채널 오실로스코프, 8채널 로직 분석기, 로직 프로브, 입출력판, 진리표, <b>주파수 응답(보드 선도)</b> — 교류 전원이 있는 회로에서 ▶ 측정 을 누르면 이득 · 위상 · −3 dB 주파수를 잽니다. 점 · 부품에서 <b>오른쪽 버튼을 짧게</b> 누르면 바로 연결 메뉴.</li><li>계측기 창 머리글의 <b>◨ ◧ ⬓ ⧉</b> 로 오른쪽 · 왼쪽 · 아래 · 떠 있는 창으로 옮깁니다. 떠 있는 창은 머리글을 끌어 이동, 오른쪽 아래 모서리로 크기 조절.</li></ul></div>
       <div><h4>시간 진행</h4><ul><li>콘덴서 · 코일 · 교류 전원이 있으면 아날로그와 디지털이 같은 시간 간격(dt)으로 함께 나아갑니다.</li><li>없으면 디지털 사건(게이트 지연 ns 단위)이 생길 때마다 아날로그를 다시 풉니다. ⚙ 설정에서 dt · 속도 · VDD · 문턱값을 바꿀 수 있습니다.</li></ul></div>
       <div><h4>저장 · 공유</h4><ul><li>💾 이 브라우저에 저장, 🔗 회로가 담긴 주소 복사, 📝 텍스트 파일 내보내기 · 가져오기(끌어다 놓기도 됨), 🖼 SVG · PNG 그림.</li><li>회로이론 · 디지털 강좌의 회로 텍스트를 📝 텍스트에 붙여 넣으면 그대로 열립니다.</li></ul></div>
     </div>`);
