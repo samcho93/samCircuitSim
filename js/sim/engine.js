@@ -69,7 +69,7 @@
    *   LED x y (좌표 2개) → 로직 LED(DLED),  PB x y → 논리 버튼(BTN),  CLK f=2 → freq=2,  TXT label="…"
    */
   function parse(text) {
-    const res = { elements: [], opts: {}, scope: null, meter: null, la: null, tt: null, checks: [], errors: [] };
+    const res = { elements: [], opts: {}, scope: null, meter: null, la: null, tt: null, bode: null, checks: [], errors: [] };
     String(text || '').split(/\r?\n/).forEach((raw, ln) => {
       const line = raw.replace(/(^|\s)(#|\/\/).*$/, '').trim();
       if (!line) return;
@@ -78,7 +78,7 @@
       const head = tk[0];
       if (typeof head !== 'string') return;
       if (head === '$') { Object.assign(res.opts, kv(tk.slice(1))); return; }
-      if (head === 'scope' || head === 'meter' || head === 'la' || head === 'tt') { res[head] = kv(tk.slice(1)); return; }
+      if (head === 'scope' || head === 'meter' || head === 'la' || head === 'tt' || head === 'bode') { res[head] = kv(tk.slice(1)); return; }
       let type = head.toUpperCase();
       // 예전 디지털 형식: 좌표가 2개뿐인 LED / PB
       const nNums = tk.slice(1).filter(isNumTok).length;
@@ -157,7 +157,7 @@
     const ok = Object.keys(o).filter((k) => o[k] != null && o[k] !== '');
     if (ok.length) lines.push('$ ' + ok.map((k) => `${k}=${o[k]}`).join(' '));
     circ.elements.forEach((el) => lines.push(serializeEl(el)));
-    ['scope', 'meter', 'la', 'tt'].forEach((k) => {
+    ['scope', 'meter', 'la', 'tt', 'bode'].forEach((k) => {
       const c = circ[k];
       if (c && Object.keys(c).length) lines.push(k + ' ' + Object.keys(c).map((q) => `${q}=${quote(c[q])}`).join(' '));
     });
@@ -883,6 +883,8 @@
   }
   function runAnalogChecks(circ) {
     const checks = circ.checks.filter((c) => !isDigitalCheck(c.text)).map((c) => parseAnalogCheck(c.text, c.line));
+    checks.forEach((c) => { c.items = c.items.filter((it) => !/^(GAIN|PHASE)\(/i.test(it.expr)); });
+    for (let i = checks.length - 1; i >= 0; i--) if (!checks[i].items.length) checks.splice(i, 1);
     const out = [];
     if (!checks.length) return out;
     const sim = new Sim(circ);
@@ -928,17 +930,142 @@
     }));
     return out;
   }
+  // ================================================================= 주파수 응답 (보드 선도)
+  /**
+   * 교류 전원의 주파수를 바꿔 가며 과도 해석으로 이득 · 위상을 잰다 (비선형 · 능동 회로도 그대로).
+   *   한 주기를 N 단계로 나누어 입력 · 출력의 기본파 성분(푸리에)을 구하고, 주기마다 값이 더 이상 변하지 않으면(정상 상태) 멈춘다.
+   * cfg: { src: 교류 전원 이름, in: 입력 측정점(없으면 전원 전압), out: 출력 측정점 · V(a,b) }
+   */
+  function bodeTargets(circ, cfg) {
+    const own = {};
+    Object.keys(cfg || {}).forEach((k) => { if (cfg[k] != null && cfg[k] !== '') own[k] = cfg[k]; });
+    cfg = Object.assign({}, circ.bode || {}, own);
+    const acs = circ.elements.filter((e) => e.type === 'AC');
+    const src = cfg.src ? circ.elements.find((e) => e.name === cfg.src) : acs[0];
+    const probes = circ.elements.filter((e) => e.type === 'P').map((e) => String(e.params.label));
+    const out = cfg.out || (probes.indexOf('OUT') >= 0 ? 'OUT' : probes[probes.length - 1]);
+    return { src, srcName: src && src.name, inp: cfg.in || null, out, fmin: cfg.fmin != null ? parseNum(cfg.fmin) : null, fmax: cfg.fmax != null ? parseNum(cfg.fmax) : null, points: cfg.points != null ? +cfg.points : null };
+  }
+  function measureFreq(text, cfg, f) {
+    const circ = parse(text);
+    const tg = bodeTargets(circ, cfg);
+    if (!tg.src) return { f, error: '교류 전원(AC)이 없습니다' };
+    const N = 128;
+    tg.src.params.freq = f;
+    tg.src.params.wave = 'sine';
+    circ.opts = Object.assign({}, circ.opts, { dt: String(1 / (f * N)) });
+    const sim = new Sim(circ);
+    if (sim.mode !== 'lock') return { f, error: '시간 진행 모드가 아닙니다' };
+    const sEl = sim.findEl(tg.srcName);
+    const nP = sim.ptNet[sEl._pins[1]], nM = sim.ptNet[sEl._pins[0]];
+    const ref = (s) => {
+      const m = /^V\(([^,)]+)(?:,([^)]+))?\)$/i.exec(s);
+      const a = sim.netByName(m ? m[1].trim() : s), b = m && m[2] ? sim.netByName(m[2].trim()) : sim.gndNet;
+      return a == null || a < -1 || b == null || b < -1 ? null : [a, b];
+    };
+    const ni = tg.inp ? ref(tg.inp) : [nP, nM];
+    const no = ref(tg.out || '');
+    if (!ni || !no) return { f, error: '입력 · 출력 측정점을 찾을 수 없습니다' };
+    const w = 2 * Math.PI * f;
+    let prev = null, H = null, cyc = 0, vin = 0;
+    const maxCyc = 400;
+    for (; cyc < maxCyc; cyc++) {
+      let ir = 0, ii = 0, or = 0, oi = 0;
+      for (let k = 0; k < N; k++) {
+        sim.stepLock();
+        const ph = w * sim.t, c = Math.cos(ph), s = Math.sin(ph);
+        const vi = sim.netV(ni[0]) - sim.netV(ni[1]), vo = sim.netV(no[0]) - sim.netV(no[1]);
+        ir += vi * c; ii -= vi * s; or += vo * c; oi -= vo * s;
+      }
+      const d = ir * ir + ii * ii;
+      if (d < 1e-30) return { f, error: '입력 신호가 0 입니다' };
+      H = [(or * ir + oi * ii) / d, (oi * ir - or * ii) / d];
+      vin = 2 * Math.sqrt(d) / N;
+      if (prev && cyc >= 2) {
+        const e = Math.hypot(H[0] - prev[0], H[1] - prev[1]);
+        if (e < 2e-4 * Math.hypot(H[0], H[1]) + 1e-7) break;
+      }
+      prev = H;
+    }
+    const mag = Math.hypot(H[0], H[1]);
+    return { f, mag, db: 20 * Math.log10(Math.max(mag, 1e-12)), phase: Math.atan2(H[1], H[0]) * 180 / Math.PI, cycles: cyc + 1, vin };
+  }
+  class FreqResponse {
+    constructor(text, cfg) {
+      this.text = typeof text === 'string' ? text : serialize(text);
+      const circ = parse(this.text);
+      this.tg = bodeTargets(circ, cfg);
+      const f0 = this.tg.src ? +this.tg.src.params.freq || 1000 : 1000;
+      this.fmin = this.tg.fmin || f0 / 100;
+      this.fmax = this.tg.fmax || f0 * 100;
+      const n = this.tg.points || Math.max(12, Math.round(Math.log10(this.fmax / this.fmin) * 12) + 1);
+      this.freqs = Array.from({ length: n }, (_, i) => this.fmin * Math.pow(this.fmax / this.fmin, i / (n - 1)));
+      this.points = [];
+      this.error = this.tg.src ? '' : '교류 전원(AC)이 없습니다';
+    }
+    get done() { return !!this.error || this.points.length >= this.freqs.length; }
+    /** 한 주파수를 잰다. 끝났으면 false */
+    next() {
+      if (this.done) return false;
+      const r = measureFreq(this.text, { src: this.tg.srcName, in: this.tg.inp, out: this.tg.out }, this.freqs[this.points.length]);
+      if (r.error) { this.error = r.error; return false; }
+      // 위상을 이어지게 (−180 ↔ +180 뛰기 없애기)
+      const last = this.points[this.points.length - 1];
+      if (last) { while (r.phase - last.phase > 180) r.phase -= 360; while (r.phase - last.phase < -180) r.phase += 360; }
+      this.points.push(r);
+      return true;
+    }
+    run() { while (this.next()); return this; }
+    /** 최대 이득과 −3 dB 주파수들 */
+    summary() {
+      const p = this.points;
+      if (!p.length) return null;
+      let mx = p[0];
+      p.forEach((q) => { if (q.db > mx.db) mx = q; });
+      const lvl = mx.db - 3.0103;
+      const cross = [];
+      for (let i = 1; i < p.length; i++) {
+        const a = p[i - 1], b = p[i];
+        if ((a.db - lvl) * (b.db - lvl) < 0) {
+          const t = (lvl - a.db) / (b.db - a.db);
+          cross.push(Math.exp(Math.log(a.f) + t * (Math.log(b.f) - Math.log(a.f))));
+        }
+      }
+      return { peak: mx, f3db: cross };
+    }
+  }
+
+  /** GAIN(f)=dB · PHASE(f)=도 검사 */
+  function runBodeChecks(text) {
+    const circ = parse(text);
+    const out = [];
+    circ.checks.filter((c) => !isDigitalCheck(c.text)).forEach((ck) => {
+      const c = parseAnalogCheck(ck.text, ck.line);
+      c.items.forEach((it) => {
+        const m = /^(GAIN|PHASE)\(([^)]+)\)$/i.exec(it.expr);
+        if (!m) return;
+        const [fs, outName] = m[2].split(',').map((s) => s.trim());
+        const r = measureFreq(text, outName ? { out: outName } : null, parseNum(fs));
+        const got = r.error ? NaN : m[1].toUpperCase() === 'GAIN' ? r.db : r.phase;
+        const tol = c.abs != null ? c.abs : m[1].toUpperCase() === 'GAIN' ? 0.3 : 3;
+        const ok = isFinite(got) && Math.abs(got - it.value) <= tol;
+        out.push({ line: ck.line, text: `${it.expr}=${it.value}`, ok, msg: ok ? '' : `${it.expr} = ${r.error || got.toFixed(2)} (기대 ${it.value})` });
+      });
+    });
+    return out;
+  }
+
   function runChecks(text) {
     if (typeof text !== 'string') text = serialize(text);
     const circ = parse(text);
     if (circ.errors.length) return { errors: circ.errors, results: [] };
     // 검사가 부품 값을 바꾸므로(V1=12 …) 따로 파싱한 회로로 돌린다
-    return { errors: [], results: runDigitalChecks(circ).concat(runAnalogChecks(parse(text))) };
+    return { errors: [], results: runDigitalChecks(circ).concat(runAnalogChecks(parse(text)), runBodeChecks(text)) };
   }
 
   const api = {
     TYPES, NAME_PREFIX, parse, serialize, serializeEl, tokenize, autoName, pins, pinList, boundsOf, isDigital, isAnalog,
-    Sim, truthTable, runChecks, valText, parseNum, siText, fmt, L0, L1, LX, LZ, VCH,
+    Sim, truthTable, runChecks, FreqResponse, measureFreq, valText, parseNum, siText, fmt, L0, L1, LX, LZ, VCH,
     A, D, waveValue: A.waveValue, LED_RGB: A.LED_RGB, lampR: A.lampR, PIN_NAMES: A.PIN_NAMES
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

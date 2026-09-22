@@ -507,6 +507,243 @@ scope ch1=VBAT ch2=I(RBAT) tb=0.5 v1=0.2 v2=0.1 o1=-4 o2=-4
 ! t=0.5 I(RBAT)=0.5 tol=3%
 ! t=5 V(VBAT)=4.2 tol=1%` },
 
+    // ================================================================ 필터 회로 (📉 주파수 응답 카드에서 ▶ 측정)
+    { group: 'flt', title: 'RC 저역 통과 필터 (1차)', desc: 'fc = 1/(2πRC) = 1.59 kHz, 차단 대역 −20 dB/decade', text: `TXT 0 -2 "RC 저역 통과 (1차): fc = 1 / (2πRC) = 1.59 kHz — 보드 선도: 📉 주파수 응답 ▶ 측정"
+AC 0 6 0 2 1 1.5915k
+W 0 2 2 2
+R 2 2 6 2 1k
+W 6 2 8 2
+C 8 2 8 6 100n
+W 0 6 8 6
+G 4 6
+P 0 2 IN
+P 8 2 OUT
+scope ch1=IN ch2=OUT tb=0.2m v1=0.5 v2=0.5
+bode fmin=10 fmax=1meg
+! GAIN(1.5915k)=-3.01 PHASE(1.5915k)=-45
+! GAIN(159.15k)=-40 abs=0.5` },
+
+    { group: 'flt', title: 'RC 고역 통과 필터 (1차)', desc: '콘덴서가 직류를 막는다 — fc = 1.59 kHz, 위상 +45° @ fc', text: `TXT 0 -2 "RC 고역 통과 (1차): 낮은 주파수를 막는다 · fc = 1.59 kHz"
+AC 0 6 0 2 1 1.5915k
+W 0 2 2 2
+C 2 2 6 2 100n
+W 6 2 8 2
+R 8 2 8 6 1k
+W 0 6 8 6
+G 4 6
+P 0 2 IN
+P 8 2 OUT
+scope ch1=IN ch2=OUT tb=0.2m v1=0.5 v2=0.5
+bode fmin=1 fmax=100k
+! GAIN(1.5915k)=-3.01 PHASE(1.5915k)=45
+! GAIN(15.915)=-40 abs=0.5` },
+
+    { group: 'flt', title: 'LC 저역 통과 필터 (2차 버터워스)', desc: 'L · C 한 단으로 −40 dB/decade — 600 Ω 부하, fc = 1 kHz', text: `TXT 0 -2 "LC 저역 통과 (2차 버터워스, 600 Ω): fc = 1 kHz 에서 −3 dB · −90°, 그 뒤 −40 dB/decade"
+AC 0 6 0 2 1 1k
+W 0 2 2 2
+L 2 2 6 2 135m
+W 6 2 10 2
+C 8 2 8 6 187.6n
+R 10 2 10 6 600 name=RL
+W 0 6 10 6
+G 4 6
+P 0 2 IN
+P 10 2 OUT
+scope ch1=IN ch2=OUT tb=0.2m v1=0.5 v2=0.5
+bode fmin=10 fmax=100k
+! GAIN(1k)=-3.01 PHASE(1k)=-90
+! GAIN(10k)=-40 abs=0.5` },
+
+    { group: 'flt', title: 'RLC 직렬 공진 대역 통과 필터', desc: 'f0 = 1/(2π√LC) = 5.03 kHz, Q = √(L/C)/R ≈ 3.2', text: `TXT 0 -2 "RLC 대역 통과: 공진 주파수 f0 = 5.03 kHz 에서만 신호가 통과 (Q = 3.16, 대역폭 1.6 kHz)"
+AC 0 6 0 2 1 5.0329k
+W 0 2 2 2
+L 2 2 6 2 10m
+C 6 2 10 2 100n
+W 10 2 12 2
+R 12 2 12 6 100
+W 0 6 12 6
+G 4 6
+P 0 2 IN
+P 12 2 OUT
+scope ch1=IN ch2=OUT tb=50u v1=0.5 v2=0.5
+bode fmin=100 fmax=200k
+! GAIN(5.0329k)=0 PHASE(5.0329k)=0
+! GAIN(50.329k)=-29.92 abs=0.5` },
+
+    { group: 'flt', title: '트윈-T 노치 필터 (대역 제거)', desc: 'R-R-2C 와 C-C-R/2 두 T 회로가 1 kHz 한 주파수만 지운다', text: `TXT 0 -2 "트윈-T 노치: f0 = 1 / (2πRC) = 1 kHz 만 깊게 제거 (예: 잡음 · 험 제거)"
+AC 0 10 0 2 1 1k
+W 0 2 2 2
+W 2 2 2 6
+R 2 2 7 2 10k
+R 7 2 12 2 10k
+C 2 6 5 6 15.915n
+C 5 6 12 6 15.915n
+C 7 2 7 10 31.83n name=C2X
+R 5 6 5 10 5k name=RHALF
+W 12 2 12 6
+W 12 2 14 2
+W 0 10 7 10
+G 3 10
+P 0 2 IN
+P 14 2 OUT
+scope ch1=IN ch2=OUT tb=0.2m v1=0.5 v2=0.5
+bode fmin=10 fmax=100k
+! GAIN(1k)=-60 abs=30
+! GAIN(10)=0 abs=0.5` },
+
+    { group: 'flt', title: '샐런-키 저역 통과 (2차 능동 · 버터워스)', desc: 'OP앰프 버퍼 + R · C 두 개씩 — Q = 0.707, fc = 1 kHz', text: `TXT 0 -2 "샐런-키 저역 통과 (이득 1): R1 = R2 = 10 kΩ, C1 = 22.5 nF (되먹임), C2 = 11.25 nF → fc = 1 kHz, Q = 0.707"
+AC 0 10 0 6 1 1k
+W 0 6 2 6
+R 2 6 6 6 10k name=R1
+R 6 6 10 6 10k name=R2
+W 10 6 12 6
+C 10 6 10 10 11.25n name=C2
+C 6 6 6 2 22.5n name=C1
+W 6 2 18 2
+W 18 2 18 5
+OA 12 5
+W 12 4 12 3
+W 12 3 17 3
+W 17 3 17 5
+W 16 5 20 5
+W 0 10 10 10
+G 5 10
+P 0 6 IN
+P 20 5 OUT
+scope ch1=IN ch2=OUT tb=0.2m v1=0.5 v2=0.5
+bode fmin=10 fmax=100k
+! GAIN(1k)=-3.01 PHASE(1k)=-90
+! GAIN(10k)=-40 abs=0.6` },
+
+    { group: 'flt', title: '샐런-키 고역 통과 (2차 능동 · 버터워스)', desc: '저역 통과의 R 과 C 를 맞바꾼 구조 — fc = 1 kHz', text: `TXT 0 -2 "샐런-키 고역 통과 (이득 1): C1 = C2 = 15.9 nF, R1 = 7.07 kΩ (되먹임), R2 = 14.14 kΩ → fc = 1 kHz"
+AC 0 10 0 6 1 1k
+W 0 6 2 6
+C 2 6 6 6 15.915n name=C1
+C 6 6 10 6 15.915n name=C2
+W 10 6 12 6
+R 10 6 10 10 14.142k name=R2
+R 6 6 6 2 7.071k name=R1
+W 6 2 18 2
+W 18 2 18 5
+OA 12 5
+W 12 4 12 3
+W 12 3 17 3
+W 17 3 17 5
+W 16 5 20 5
+W 0 10 10 10
+G 5 10
+P 0 6 IN
+P 20 5 OUT
+scope ch1=IN ch2=OUT tb=0.2m v1=0.5 v2=0.5
+bode fmin=10 fmax=100k
+! GAIN(1k)=-3.01 PHASE(1k)=90
+! GAIN(100)=-40 abs=0.6` },
+
+    { group: 'flt', title: '다중 되먹임(MFB) 대역 통과 필터', desc: 'OP앰프 하나로 f0 = 1 kHz, Q = 5, 이득 2배(+6 dB)', text: `TXT 0 -3 "MFB 대역 통과: f0 = 1 kHz, Q = 5 (대역폭 200 Hz), 중심 이득 −2 (+6 dB, 위상 반전)"
+AC 0 10 0 4 0.5 1k
+W 0 4 2 4
+R 2 4 6 4 39.79k name=R1
+C 6 4 10 4 10n name=C2
+W 10 4 14 4
+R 6 4 6 10 1.658k name=R2
+C 6 4 6 0 10n name=C1
+W 6 0 20 0
+W 20 0 20 5
+R 11 4 11 1 159.15k name=R3
+W 11 1 19 1
+W 19 1 19 5
+OA 14 5
+W 14 6 14 10
+W 18 5 22 5
+W 0 10 14 10
+G 3 10
+P 0 4 IN
+P 22 5 OUT
+scope ch1=IN ch2=OUT tb=0.5m v1=0.5 v2=0.5
+bode fmin=100 fmax=10k
+! GAIN(1k)=6.02 abs=0.4
+! GAIN(100)=-27.87 abs=0.4` },
+
+    { group: 'flt', title: '4차 버터워스 저역 통과 (샐런-키 2단) · 구형파 → 사인파', desc: '−80 dB/decade 로 고조파를 걸러 1 kHz 구형파를 사인파로', text: `TXT 0 -3 "4차 버터워스 저역 통과 (fc = 1.2 kHz, Q = 0.541 · 1.307): 1 kHz 구형파의 고조파를 걸러 사인파로"
+AC 0 10 0 6 1 1k wave=square
+W 0 6 2 6
+R 2 6 6 6 10k
+R 6 6 10 6 10k
+W 10 6 12 6
+C 10 6 10 10 12.25n
+C 6 6 6 2 14.35n
+W 6 2 18 2
+W 18 2 18 5
+OA 12 5 name=U1
+W 12 4 12 3
+W 12 3 17 3
+W 17 3 17 5
+W 16 5 20 5
+R 20 5 24 5 10k
+R 24 5 28 5 10k
+W 28 5 30 5
+C 28 5 28 10 5.075n
+C 24 5 24 1 34.65n
+W 24 1 36 1
+W 36 1 36 4
+OA 30 4 name=U2
+W 30 3 30 2
+W 30 2 35 2
+W 35 2 35 4
+W 34 4 38 4
+W 0 10 28 10
+G 5 10
+P 0 6 IN
+P 19 5 S1
+P 38 4 OUT
+scope ch1=IN ch2=OUT tb=0.5m v1=0.5 v2=0.5
+bode fmin=100 fmax=30k
+! GAIN(1.2k)=-3.01
+! GAIN(12k)=-80 abs=1.5` },
+
+    { group: 'flt', title: '능동 반전 저역 통과 (이득 −10)', desc: '반전 증폭기 되먹임 저항에 C 를 나란히 — 이득 20 dB, fc = 1 kHz', text: `TXT 0 -3 "능동 저역 통과: 통과 대역 이득 = −Rf/R1 = −10 (20 dB), fc = 1 / (2π Rf Cf) = 1 kHz"
+AC 0 10 0 4 0.1 1k
+W 0 4 2 4
+R 2 4 6 4 10k name=R1
+W 6 4 8 4
+R 7 4 7 1 100k name=RF
+W 7 1 14 1
+W 14 1 14 5
+C 6 4 6 0 1.5915n name=CF
+W 6 0 15 0
+W 15 0 15 5
+OA 8 5
+W 8 6 8 10
+W 12 5 16 5
+W 0 10 8 10
+G 4 10
+P 0 4 IN
+P 16 5 OUT
+scope ch1=IN ch2=OUT tb=0.2m v1=0.1 v2=0.5
+bode fmin=10 fmax=100k
+! GAIN(10)=20
+! GAIN(1k)=16.99` },
+
+    { group: 'flt', title: '스피커 2웨이 크로스오버 네트워크', desc: '코일은 저음(우퍼)으로, 콘덴서는 고음(트위터)으로 — 2 kHz 에서 나눈다', text: `TXT 0 -2 "크로스오버: 우퍼 = L 저역 통과, 트위터 = C 고역 통과, 두 쪽 모두 2 kHz 에서 −3 dB (8 Ω)"
+AC 0 8 0 2 1 2k
+W 0 2 2 2
+L 2 2 8 2 0.6366m name=LW
+W 8 2 14 2
+R 14 2 14 8 8 name=WOOFER
+W 1 2 1 5
+C 1 5 5 5 9.947u name=CT
+W 5 5 8 5
+R 8 5 8 8 8 name=TWEETER
+W 0 8 14 8
+G 4 8
+P 0 2 IN
+P 12 2 WOOF
+P 6 5 TWT
+scope ch1=WOOF ch2=TWT tb=0.2m v1=0.5 v2=0.5
+bode out=WOOF fmin=20 fmax=20k
+! GAIN(2k)=-3.01 GAIN(2k,TWT)=-3.01
+! GAIN(200,TWT)=-20 abs=0.5 GAIN(20k)=-20 abs=0.5` },
+
     // ================================================================ 아날로그 (회로이론 강좌)
     { group: 'ana', title: '전압 분배 (저항 2개)', desc: 'V(A) = 12 × 2k / (1k + 2k) = 8 V', text: `V 0 8 0 2 12
 W 0 2 8 2
@@ -821,7 +1058,7 @@ W 2 7 2 4
 DLED 22 4 name=Y
 la ch=A,B,C tb=10n` }
   ];
-  const GROUPS = { mix: '🔀 혼합 신호 (아날로그 + 디지털)', pwr: '🔋 전원 회로 (AC-DC · DC-DC · 정전압 · 정전류)', ana: '〰 아날로그', dig: '🔢 디지털' };
+  const GROUPS = { mix: '🔀 혼합 신호 (아날로그 + 디지털)', pwr: '🔋 전원 회로 (AC-DC · DC-DC · 정전압 · 정전류)', flt: '🎚 필터 회로 (보드 선도로 측정)', ana: '〰 아날로그', dig: '🔢 디지털' };
   const api = { EXAMPLES, GROUPS };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.SIM_EXAMPLES = api;

@@ -711,6 +711,11 @@
           ${card('scope', '📈 오실로스코프', '<div class="ip-scope"></div>')}
           ${card('la', '📊 로직 분석기', `<div class="la-screen"><canvas class="la-canvas"></canvas><div class="la-read"></div></div><div class="la-chans"></div>`,
     '<button class="sc-small" data-ip="hold" title="화면 멈춤 / 계속">⏸ 멈춤</button><span class="sc-knob"><button data-ip="tb-" title="Time/div 줄이기">−</button><span class="la-tb">1 s</span><button data-ip="tb+" title="Time/div 늘리기">+</button></span>')}
+          ${card('bode', '📉 주파수 응답 (보드 선도)', `<div class="bd-ctl">
+              <label>입력 <select class="bd-in"></select></label><label>출력 <select class="bd-out"></select></label>
+              <label>범위 <input class="bd-fmin" type="text" spellcheck="false"> ~ <input class="bd-fmax" type="text" spellcheck="false"> Hz</label>
+            </div><div class="bd-screen"><canvas class="bd-canvas"></canvas><div class="bd-read"></div></div><div class="bd-sum"></div>`,
+    '<button class="sc-small" data-ip="bode" title="교류 전원의 주파수를 바꿔 가며 이득과 위상을 잽니다">▶ 측정</button>')}
           ${card('io', '🎛️ 디지털 입력 · 출력', '<div class="io-body"></div>')}
           ${card('probe', '🔴 로직 프로브', `<div class="lp"><button class="sc-src lp-src" data-ip="probe">🔌 측정할 점 고르기</button>
               <span class="lp-led hi" title="HIGH">HI</span><span class="lp-led lo" title="LOW">LO</span><span class="lp-led pu" title="변화(펄스) 감지">PULSE</span><span class="lp-val">–</span></div>`)}
@@ -737,6 +742,10 @@
       const cv = this.$('.la-canvas');
       cv.addEventListener('pointermove', (e) => { const r = cv.getBoundingClientRect(); this.cursor = e.clientX - r.left; });
       cv.addEventListener('pointerleave', () => { this.cursor = null; this.$('.la-read').textContent = ''; });
+      const bc = this.$('.bd-canvas');
+      bc.addEventListener('pointermove', (e) => { const r = bc.getBoundingClientRect(); this.bdCursor = e.clientX - r.left; this.drawBode(); });
+      bc.addEventListener('pointerleave', () => { this.bdCursor = null; this.$('.bd-read').textContent = ''; this.drawBode(); });
+      this.$('.bd-ctl').addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') this.runBode(); });
       this.loop();
     }
 
@@ -764,6 +773,7 @@
         case 'tb-': case 'tb+': this.laTb = stepList(LA_TB, this.laTb, a === 'tb+' ? 1 : -1); this.$('.la-tb').textContent = CS.siText(this.laTb) + 's'; break;
         case 'probe': v.startPick('node', '로직 프로브를 댈 점을 누르세요 (Esc 취소)', (r) => { this.probe = this.refOf(r); this.probeToggles = null; this.$('.lp-src').textContent = '🔌 ' + this.probe.name; }); break;
         case 'tt': this.buildTT(); break;
+        case 'bode': if (this.bode && !this.bode.done) this.stopBode(); else this.runBode(); break;
         case 'ch-add': v.startPick('node', '로직 분석기 채널에 연결할 점을 누르세요 (Esc 취소)', (r) => { if (this.chans.length < 8) this.chans.push(this.refOf(r)); this.renderChans(); }); break;
         case 'ch-pick': { const i = +b.dataset.i; v.startPick('node', `LA CH${i + 1} 을(를) 연결할 점을 누르세요`, (r) => { this.chans[i] = this.refOf(r); this.renderChans(); }); break; }
         case 'ch-del': this.chans.splice(+b.dataset.i, 1); this.renderChans(); break;
@@ -913,6 +923,7 @@
       this.$('.tt-body').innerHTML = '<div class="ip-help">논리 입력 스위치(SW · DIP)의 <b>모든 조합</b>을 넣어 보고 출력(로직 LED · 측정점 · 표시기)을 표로 만듭니다.</div>';
       this.tt = null;
       this.chans = null;
+      this._bodeKey = null;
     }
     /** 회로가 다시 만들어진 뒤 (편집): 넷 번호를 다시 찾는다 */
     onRebuild() {
@@ -927,6 +938,8 @@
       this.renderChans();
       this.renderIO();
       this.renderProbes(true);
+      const bkey = v.circ.elements.filter((e) => e.type === 'AC' || e.type === 'P').map((e) => e.type + (e.name || e.params.label)).join('|');
+      if (bkey !== this._bodeKey) { this._bodeKey = bkey; this.setupBode(); }
       const sim = v.sim;
       const hasDig = sim.comps.length > 0;
       this.host.querySelector('[data-card="la"]').classList.toggle('hidden', !hasDig && !(v.circ.la));
@@ -935,6 +948,156 @@
       this.host.querySelector('[data-card="tt"]').classList.toggle('hidden', !sim.comps.some((c) => c.type === 'SW' || c.type === 'DIP'));
       this.host.querySelector('[data-card="state"]').classList.toggle('hidden', !sim.comps.some((c) => CS.D.isSeq(c.type) || c.type === 'ROM' || c.type === 'T555'));
       this.sync();
+    }
+
+    // ---------------------------------------------------------------- 주파수 응답
+    setupBode() {
+      const v = this.view, c = v.circ;
+      const acs = c.elements.filter((e) => e.type === 'AC');
+      const card = this.$('[data-card="bode"]');
+      card.classList.toggle('hidden', !acs.length);
+      this.stopBode();
+      this.bode = null;
+      if (!acs.length) return;
+      const cfg = c.bode || {};
+      const probes = c.elements.filter((e) => e.type === 'P').map((e) => String(e.params.label));
+      const srcOpts = acs.map((e) => [`@${e.name}`, `${e.name} 전원 전압`]);
+      const inSel = this.$('.bd-in'), outSel = this.$('.bd-out');
+      const opt = (arr, cur) => arr.map(([val, t]) => `<option value="${esc(val)}"${val === cur ? ' selected' : ''}>${esc(t)}</option>`).join('');
+      const inCur = cfg.in || `@${cfg.src || acs[0].name}`;
+      inSel.innerHTML = opt(srcOpts.concat(probes.map((p) => [p, p])), inCur);
+      const outDef = cfg.out || (probes.indexOf('OUT') >= 0 ? 'OUT' : probes[probes.length - 1] || '');
+      outSel.innerHTML = opt(probes.map((p) => [p, p]), outDef);
+      const f0 = +(c.elements.find((e) => e.name === (cfg.src || acs[0].name)) || acs[0]).params.freq || 1000;
+      this.$('.bd-fmin').value = CS.siText(cfg.fmin ? CS.parseNum(cfg.fmin) : f0 / 100);
+      this.$('.bd-fmax').value = CS.siText(cfg.fmax ? CS.parseNum(cfg.fmax) : f0 * 100);
+      this.$('.bd-sum').innerHTML = '<div class="ip-help">▶ 측정 을 누르면 교류 전원의 주파수를 바꿔 가며 <b>출력 ÷ 입력</b>의 이득(dB)과 위상을 그립니다. 비선형 · 능동 회로도 실제 과도 해석으로 잽니다.</div>';
+      this.drawBode();
+    }
+    runBode() {
+      const v = this.view;
+      if (!v) return;
+      const inV = this.$('.bd-in').value, outV = this.$('.bd-out').value;
+      if (!outV) { if (this.opts.toast) this.opts.toast('출력 측정점(P)이 필요합니다'); return; }
+      const cfg = { out: outV, fmin: this.$('.bd-fmin').value, fmax: this.$('.bd-fmax').value };
+      if (inV[0] === '@') cfg.src = inV.slice(1); else { cfg.in = inV; cfg.src = (v.circ.bode && v.circ.bode.src) || undefined; }
+      this.bode = new CS.FreqResponse(CS.serialize(v.circ), cfg);
+      const btn = this.$('[data-ip="bode"]');
+      btn.textContent = '■ 중지';
+      const tick = () => {
+        const b = this.bode;
+        if (!b || b.done) { btn.textContent = '▶ 측정'; this.bodeSummary(); this.drawBode(); return; }
+        const t0 = performance.now();
+        while (!b.done && performance.now() - t0 < 25) b.next();
+        this.drawBode();
+        this.$('.bd-sum').innerHTML = `<div class="ip-help">측정 중… ${b.points.length} / ${b.freqs.length}</div>`;
+        this._bt = setTimeout(tick, 0);
+      };
+      tick();
+    }
+    stopBode() {
+      clearTimeout(this._bt);
+      if (this.bode && !this.bode.done) { this.bode.freqs.length = this.bode.points.length; }
+      const btn = this.$('[data-ip="bode"]');
+      if (btn) btn.textContent = '▶ 측정';
+    }
+    bodeSummary() {
+      const b = this.bode, box = this.$('.bd-sum');
+      if (!b) return;
+      if (b.error) { box.innerHTML = `<div class="ip-help">⚠ ${esc(b.error)}</div>`; return; }
+      const s = b.summary();
+      if (!s) return;
+      const lo = b.points[0], hi = b.points[b.points.length - 1];
+      let kind = '';
+      const pk = s.peak;
+      if (pk.db - lo.db > 3 && pk.db - hi.db > 3) kind = '대역 통과';
+      else if (lo.db - hi.db > 3) kind = '저역 통과';
+      else if (hi.db - lo.db > 3) kind = '고역 통과';
+      const mn = b.points.reduce((a, q) => (q.db < a.db ? q : a), b.points[0]);
+      if (!kind && pk.db - mn.db > 10 && mn !== lo && mn !== hi) kind = '대역 제거 (노치)';
+      const rows = [['모양', kind || '평탄'], ['최대 이득', `${pk.db.toFixed(2)} dB @ ${F(pk.f, 'Hz')}`]];
+      if (s.f3db.length) rows.push(['−3 dB 주파수', s.f3db.map((f) => F(f, 'Hz')).join(' · ')]);
+      if (s.f3db.length === 2) rows.push(['대역폭 · Q', `${F(s.f3db[1] - s.f3db[0], 'Hz')} · Q ≈ ${(pk.f / (s.f3db[1] - s.f3db[0])).toFixed(2)}`]);
+      if (kind.indexOf('노치') >= 0) rows.push(['최소 이득', `${mn.db.toFixed(1)} dB @ ${F(mn.f, 'Hz')}`]);
+      // 차단 대역 기울기 (마지막 10배 구간)
+      const slope = (a, z) => (z.db - a.db) / Math.log10(z.f / a.f);
+      const k10 = Math.round(b.points.length / Math.log10(hi.f / lo.f));
+      if (kind === '저역 통과' && b.points.length > k10) rows.push(['기울기', `${slope(b.points[b.points.length - 1 - k10], hi).toFixed(1)} dB/decade`]);
+      if (kind === '고역 통과' && b.points.length > k10) rows.push(['기울기', `${slope(lo, b.points[k10]).toFixed(1)} dB/decade`]);
+      box.innerHTML = `<div class="bd-rows">${rows.map(([k, x]) => `<div><span>${k}</span><b>${esc(x)}</b></div>`).join('')}</div>`;
+    }
+    drawBode() {
+      const cv = this.$('.bd-canvas');
+      const dpr = window.devicePixelRatio || 1;
+      const W = cv.clientWidth, H = cv.clientHeight;
+      if (!W || !H) return;
+      if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
+      const g = cv.getContext('2d');
+      g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      g.fillStyle = '#071410'; g.fillRect(0, 0, W, H);
+      const b = this.bode;
+      const L = 40, R = 40, T = 8, B = 18;
+      const pw = W - L - R, ph = H - T - B;
+      const fmin = b ? b.fmin : CS.parseNum(this.$('.bd-fmin').value, 10), fmax = b ? b.fmax : CS.parseNum(this.$('.bd-fmax').value, 1e5);
+      const X = (f) => L + Math.log10(f / fmin) / Math.log10(fmax / fmin) * pw;
+      const pts = b ? b.points : [];
+      let dbMax = 5, dbMin = -45;
+      if (pts.length) {
+        const top = Math.max(...pts.map((p) => p.db)), bot = Math.min(...pts.map((p) => p.db));
+        dbMax = Math.ceil((top + 3) / 10) * 10; dbMin = Math.min(dbMax - 20, Math.floor(Math.max(bot, top - 100) / 10) * 10);
+      }
+      let phMax = 90, phMin = -180;
+      if (pts.length) {
+        const a = Math.max(...pts.map((p) => p.phase)), z = Math.min(...pts.map((p) => p.phase));
+        phMax = Math.ceil(a / 45) * 45; phMin = Math.floor(z / 45) * 45;
+        if (phMax - phMin < 90) { phMax += 45; phMin -= 45; }
+      }
+      const Yd = (d) => T + (dbMax - d) / (dbMax - dbMin) * ph;
+      const Yp = (p) => T + (phMax - p) / (phMax - phMin) * ph;
+      g.font = '600 10px JetBrains Mono, monospace';
+      g.strokeStyle = 'rgba(120,200,170,.16)'; g.fillStyle = 'rgba(160,220,200,.7)'; g.lineWidth = 1;
+      for (let e = Math.ceil(Math.log10(fmin) - 1e-9); e <= Math.floor(Math.log10(fmax) + 1e-9); e++) {
+        const x = X(Math.pow(10, e));
+        g.beginPath(); g.moveTo(x + 0.5, T); g.lineTo(x + 0.5, T + ph); g.stroke();
+        g.textAlign = 'center'; g.fillText(CS.siText(Math.pow(10, e)), x, H - 5);
+        for (let m = 2; m < 10; m++) { const xm = X(m * Math.pow(10, e)); if (xm > L && xm < L + pw) { g.strokeStyle = 'rgba(120,200,170,.06)'; g.beginPath(); g.moveTo(xm + 0.5, T); g.lineTo(xm + 0.5, T + ph); g.stroke(); g.strokeStyle = 'rgba(120,200,170,.16)'; } }
+      }
+      for (let d = dbMax; d >= dbMin; d -= 10) {
+        const y = Yd(d);
+        g.beginPath(); g.moveTo(L, y + 0.5); g.lineTo(L + pw, y + 0.5); g.stroke();
+        g.fillStyle = '#f5c400'; g.textAlign = 'right'; g.fillText(d + '', L - 4, y + 3.5);
+      }
+      g.fillStyle = '#22d3ee'; g.textAlign = 'left';
+      for (let p = phMax; p >= phMin; p -= 45) g.fillText(p + '°', L + pw + 4, Yp(p) + 3.5);
+      g.fillStyle = '#f5c400'; g.fillText('dB', 4, T + 8);
+      if (!pts.length) {
+        g.fillStyle = 'rgba(160,220,200,.6)'; g.textAlign = 'center'; g.font = '13px Pretendard Variable, sans-serif';
+        g.fillText('▶ 측정 을 누르세요', L + pw / 2, T + ph / 2);
+        return;
+      }
+      // −3 dB 선
+      const s = b.summary();
+      if (s) {
+        g.strokeStyle = 'rgba(255,160,60,.5)'; g.setLineDash([4, 4]);
+        const y3 = Yd(s.peak.db - 3.01);
+        g.beginPath(); g.moveTo(L, y3); g.lineTo(L + pw, y3); g.stroke();
+        s.f3db.forEach((f) => { const x = X(f); g.beginPath(); g.moveTo(x, T); g.lineTo(x, T + ph); g.stroke(); });
+        g.setLineDash([]);
+      }
+      [['phase', Yp, '#22d3ee'], ['db', Yd, '#f5c400']].forEach(([k, Y, col]) => {
+        g.strokeStyle = col; g.lineWidth = 2; g.shadowColor = col; g.shadowBlur = 3;
+        g.beginPath();
+        pts.forEach((p, i) => { const x = X(p.f), y = Y(p[k]); if (i) g.lineTo(x, y); else g.moveTo(x, y); });
+        g.stroke(); g.shadowBlur = 0;
+      });
+      if (this.bdCursor != null && this.bdCursor >= L && this.bdCursor <= L + pw) {
+        const f = fmin * Math.pow(fmax / fmin, (this.bdCursor - L) / pw);
+        let q = pts[0];
+        pts.forEach((p) => { if (Math.abs(Math.log(p.f / f)) < Math.abs(Math.log(q.f / f))) q = p; });
+        g.strokeStyle = 'rgba(255,255,255,.5)'; g.setLineDash([3, 3]);
+        g.beginPath(); g.moveTo(X(q.f) + 0.5, T); g.lineTo(X(q.f) + 0.5, T + ph); g.stroke(); g.setLineDash([]);
+        this.$('.bd-read').innerHTML = `<b>${F(q.f, 'Hz')}</b> <span style="color:#f5c400">${q.db.toFixed(2)} dB (×${q.mag.toPrecision(3)})</span> <span style="color:#22d3ee">${q.phase.toFixed(1)}°</span>`;
+      }
     }
 
     // ---------------------------------------------------------------- 로직 분석기
@@ -1172,6 +1335,7 @@
           const tx = { 0: 'LOW', 1: 'HIGH', 2: 'X', 3: 'Z' }[n.v] + (n.analog ? ` · ${F(sim.netV(n.id), 'V')}` : '');
           if (this.$('.lp-val').textContent !== tx) this.$('.lp-val').textContent = tx;
         }
+        if (fc % 20 === 0 && !this.$('[data-card="bode"]').classList.contains('folded')) this.drawBode();
         if (fc % 3 === 0) {
           this.renderProbes();
           this.refreshIO();
