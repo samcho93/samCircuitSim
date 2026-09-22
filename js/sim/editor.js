@@ -25,6 +25,17 @@
     ['semi', '반도체', [it('D', '다이오드', { hot: 'D' }), it('Z', '제너'), it('LED', 'LED'), { key: 'QN', type: 'Q', name: 'NPN', hot: 'T' }, { key: 'QP', type: 'Q', name: 'PNP', params: { pnp: 1, f: 1 } },
       { key: 'MN', type: 'M', name: 'N-MOSFET' }, { key: 'MP', type: 'M', name: 'P-MOSFET', params: { p: 1, f: 1 } }, it('J', 'JFET')]],
     ['aic', '아날로그 IC · 계측', [it('OA', 'OP앰프', { hot: 'O' }), it('CMPR', '비교기'), it('T555', '555 타이머'), it('ASW', '아날로그 스위치'), it('AM', '전류계'), it('VM', '전압계')]],
+    ['pwr', '전원 IC · 모듈', [
+      { key: 'R7805', type: 'VREG', name: '7805 (5 V)', params: { part: '7805', vout: 5, vdo: 2, ilim: 1.5, iq: 0.005 } },
+      { key: 'R7812', type: 'VREG', name: '7812 (12 V)', params: { part: '7812', vout: 12, vdo: 2, ilim: 1.5, iq: 0.005 } },
+      { key: 'LM317', type: 'VREG', name: 'LM317 (가변)', params: { part: 'LM317', vout: 1.25, vdo: 1.5, ilim: 1.5, iq: 5e-5 } },
+      { key: 'AMS1117', type: 'VREG', name: 'AMS1117-3.3', params: { part: 'AMS1117-3.3', vout: 3.3, vdo: 1.1, ilim: 1, iq: 0.005 } },
+      { key: 'TP4056', type: 'VREG', name: 'TP4056 충전', params: { part: 'TP4056', vout: 4.2, vdo: 0.1, ilim: 0.5, iq: 3e-4 } },
+      it('TL431', 'TL431 기준'),
+      { key: 'LM2596', type: 'BUCK', name: 'LM2596 벅' },
+      { key: 'MT3608', type: 'BOOST', name: 'MT3608 부스트' },
+      it('DCDC', 'DC-DC 모듈'),
+      it('ACDC', 'AC-DC 모듈')]],
     ['conv', 'A/D · D/A 변환', [it('ADC', 'A/D 변환기'), it('DAC', 'D/A 변환기')]],
     ['din', '디지털 입력', [it('SW', '토글 스위치'), it('BTN', '푸시 버튼'), it('CLK', '클럭', { hot: 'K' }), it('DIP', 'DIP 스위치'), it('PU', '풀업'), it('PD', '풀다운')]],
     ['dout', '디지털 출력', [it('DLED', '로직 LED'), it('LEDS', 'LED 막대'), it('HEX', '16진 표시'), it('SEG', '7세그먼트')]],
@@ -65,6 +76,9 @@
     if (x.type === 'ASW') vb = '-6 -46 92 60';
     if (x.type === 'RLY') vb = '-20 -8 136 96';
     if (x.type === 'SPDT' || x.type === 'POT') vb = '-6 -24 92 70';
+    if (x.type === 'VREG' || x.type === 'DCDC') vb = '-6 -34 132 80';
+    if (x.type === 'BUCK' || x.type === 'BOOST' || x.type === 'ACDC') vb = '-6 -34 132 120';
+    if (x.type === 'TL431') vb = '-50 -6 80 92';
     return `<svg viewBox="${vb}" class="cv">${leads}${d.body.replace(/class="glow"[^>]*opacity="0"/, 'class="glow" opacity="0"')}</svg>`;
   }
 
@@ -85,13 +99,18 @@
     phase: ['위상', '°'], duty: ['듀티비(0~1)', ''], i: ['전류', 'A'], vz: ['제너 전압', 'V'], w: ['정격 전력', 'W'], beta: ['전류 증폭률 β', ''],
     vt: ['문턱 전압 Vth', 'V'], k: ['k (A/V²)', ''], idss: ['IDSS', 'A'], vp: ['+전원', 'V'], vn: ['−전원', 'V'], drop: ['출력 여유', 'V'],
     gain: ['개방 이득', ''], gbw: ['이득-대역폭 곱', 'Hz'], n: ['권선비 (2차/1차)', ''], v0: ['초기 전압', 'V'], i0: ['초기 전류', 'A'], pos: ['위치 (0~1)', ''],
-    size: ['글자 크기', 'px'], a: ['정격 전류', 'A'], va: ['얼리 전압', 'V'], lambda: ['λ', ''], ron: ['ON 저항', 'Ω'], ion: ['동작 전류', 'A']
+    size: ['글자 크기', 'px'], a: ['정격 전류', 'A'], va: ['얼리 전압', 'V'], lambda: ['λ', ''], ron: ['ON 저항', 'Ω'], ion: ['동작 전류', 'A'],
+    vout: ['출력 전압', 'V'], vdo: ['드롭아웃 전압', 'V'], ilim: ['전류 한계', 'A'], iq: ['대기 전류', 'A'], eff: ['효율 (0~1)', ''], uvlo: ['최소 입력 (UVLO)', 'V'],
+    fsw: ['스위칭 주파수', 'Hz'], vref: ['FB 기준 전압', 'V'], kp: ['비례 이득 (A/V)', ''], ki: ['적분 이득 (A/V·s)', ''], tss: ['소프트 스타트', 's'], vmin: ['최소 입력 첨두', 'V']
   };
   const PROPS = {
     R: ['r'], POT: ['r', 'pos'], C: ['c', 'pol', 'v0'], L: ['l', 'i0'], V: ['v'], AC: ['wave', 'amp', 'freq', 'dc', 'phase', 'duty'], I: ['i'],
     S: ['on'], PB: [], SPDT: ['pos01'], FUSE: ['a'], D: ['model'], Z: ['vz'], LED: ['color'], LAMP: ['v', 'w'], AM: [], VM: [],
     Q: ['pnp', 'beta', 'va', 'rot', 'f'], M: ['p', 'vt', 'k', 'lambda', 'rot', 'f'], J: ['p', 'idss', 'vpj', 'rot', 'f'],
     OA: ['vp', 'vn', 'drop', 'gain', 'gbw', 'rot', 'f'], X: ['n', 'l', 'rot', 'f'], ASW: ['ron', 'inv', 'rot', 'f'], RLY: ['r', 'ion', 'rot', 'f'],
+    VREG: ['part', 'vout', 'vdo', 'ilim', 'iq', 'rot', 'f'], TL431: ['rot', 'f'],
+    BUCK: ['part', 'fsw', 'vref', 'ilim', 'ron', 'kp', 'ki', 'tss', 'rot', 'f'], BOOST: ['part', 'fsw', 'vref', 'ilim', 'ron', 'kp', 'ki', 'tss', 'rot', 'f'],
+    DCDC: ['part', 'vout', 'eff', 'ilim', 'uvlo', 'rot', 'f'], ACDC: ['part', 'vout', 'eff', 'ilim', 'vmin', 'rot', 'f'],
     P: ['label', 'lp'], N: ['label'], TXT: ['text', 'size'], G: [], W: []
   };
   const SELECTS = {
@@ -605,7 +624,7 @@
             return;
           }
           if (CHECKS[k]) { rows.push(`<label class="pp-row chk"><input type="checkbox" data-k="${k}"${+p[k] ? ' checked' : ''}><span>${CHECKS[k]}</span></label>`); return; }
-          if (k === 'label' || k === 'text') { rows.push(`<label class="pp-row"><span>${k === 'label' ? '이름' : '글자'}</span><input type="text" data-k="${k}" value="${esc(p[k] || '')}"></label>`); return; }
+          if (k === 'label' || k === 'text' || k === 'part') { rows.push(`<label class="pp-row"><span>${k === 'label' ? '이름' : k === 'part' ? '부품 번호' : '글자'}</span><input type="text" data-k="${k}" value="${esc(p[k] || '')}"></label>`); return; }
           if (k === 'pos') { rows.push(`<label class="pp-row"><span>와이퍼 위치</span><input type="range" min="0" max="1" step="0.01" data-k="pos" value="${+p.pos}"><i>${Math.round(+p.pos * 100)}%</i></label>`); return; }
           const [lab, unit] = F[k] || [k, ''];
           rows.push(`<label class="pp-row"><span>${lab}</span><input type="text" data-k="${k}" value="${esc(p[k] == null ? '' : typeof p[k] === 'number' ? CS.siText(p[k], 4) : p[k])}"><i>${unit}</i></label>`);
@@ -661,7 +680,7 @@
           if (inp.type === 'checkbox') v = inp.checked ? 1 : 0;
           else if (inp.tagName === 'SELECT') v = /^\d+$/.test(inp.value) ? +inp.value : inp.value;
           else if (inp.type === 'range') v = +inp.value;
-          else if (['label', 'text', 'lbl'].includes(k)) v = inp.value;
+          else if (['label', 'text', 'lbl', 'part'].includes(k)) v = inp.value;
           else { v = CS.parseNum(inp.value); if (v == null || isNaN(v)) { inp.classList.add('bad'); return; } }
           inp.classList.remove('bad');
           if (k === 'label' && ['P', 'N'].includes(el.type)) v = String(v).replace(/\s+/g, '_') || (el.type === 'P' ? 'A' : 'NET');

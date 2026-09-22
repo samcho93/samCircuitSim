@@ -218,6 +218,295 @@ P 2 2 IN
 P 10 2 OUT
 scope ch1=IN ch2=OUT tb=0.5 v1=1 v2=1` },
 
+    // ================================================================ 전원 회로 (AC-DC · DC-DC · 정전압 · 정전류)
+    { group: 'pwr', title: 'AC-DC 선형 전원: 변압기 + 브리지 + 7805', desc: '220 V 교류 → 변압기 → 전파 정류 → 평활 → 7805 → 5 V', text: `TXT 0 -2 "AC-DC 선형 전원: 220 V → 변압기(20:1) → 브리지 정류 → 평활 1000 µF → 7805 → 5 V"
+AC 0 8 0 4 311 60 name=AC220
+W 0 4 4 4
+W 0 8 4 8
+X 4 4 n=0.05
+W 8 4 10 4
+W 10 4 10 6
+W 10 6 12 6
+D 12 6 12 2 model=1n4001
+D 12 10 12 6 model=1n4001
+W 8 8 14 8
+W 14 8 14 6
+W 14 6 16 6
+D 16 6 16 2 model=1n4001
+D 16 10 16 6 model=1n4001
+W 12 2 22 2
+C 20 2 20 10 1000u pol=1
+VREG 22 2 part=7805
+W 25 4 25 10
+W 28 2 34 2
+C 30 2 30 10 10u
+R 34 2 34 10 50 name=RL
+W 12 10 34 10
+G 22 10
+P 20 2 VRAW
+P 32 2 VOUT
+scope ch1=VRAW ch2=VOUT tb=5m v1=5 v2=5 o1=-3 o2=-3
+! t=0.3 VMIN(VOUT)=5 VMAX(VRAW)=14.6 tol=5%` },
+
+    { group: 'pwr', title: 'AC-DC 전원 모듈 (SMPS, HLK-PM05)', desc: '220 V 교류를 바로 5 V 로 — 스마트 기기용 절연형 모듈', text: `TXT 0 -2 "AC-DC 모듈: 220 V 교류 → HLK-PM05 (절연형 SMPS) → 5 V"
+AC 0 6 0 2 311 60 name=AC220
+W 0 2 4 2
+W 0 6 3 6
+W 3 6 3 4
+W 3 4 4 4
+ACDC 4 2
+W 10 2 16 2
+C 14 2 14 4 470u pol=1
+R 16 2 20 2 150
+LED 20 2 20 4 color=green
+R 24 2 24 4 50 name=RL
+W 20 2 24 2
+W 10 4 24 4
+G 12 4
+G 0 6
+P 12 2 V5
+scope ch1=V5 tb=20m v1=2 o1=-3
+! t=0.3 VAVG(V5)=5 tol=2%` },
+
+    { group: 'pwr', title: '벅 컨버터 원리 (이상적 스위치 · 개루프)', desc: 'Vout ≈ D × Vin — 스위치 · 코일 · 다이오드 · 콘덴서만으로 강압', text: `$ speed=5m dt=0.5u
+TXT 0 -5 "벅(강압) 컨버터: 클럭(20 kHz, 듀티 40 %)이 스위치를 켜고 끈다 → Vout ≈ 0.4 × 12 V"
+V 0 8 0 2 12
+W 0 2 4 2
+ASW 4 2 ron=0.05
+CLK 4 -2 freq=20k duty=0.4 name=PWM
+W 4 -2 6 -2
+W 6 -2 6 0
+D 8 8 8 2 model=schottky
+L 8 2 14 2 220u
+C 14 2 14 8 100u
+W 14 2 18 2
+R 18 2 18 8 5 name=RL
+W 0 8 18 8
+G 4 8
+P 8 2 SW
+P 16 2 OUT
+scope ch1=SW ch2=OUT tb=20u v1=5 v2=2 o1=-3 o2=-3
+! t=20m VAVG(OUT)=4.6 tol=5%` },
+
+    { group: 'pwr', title: '부스트 컨버터 원리 (MOSFET · 개루프)', desc: 'Vout ≈ Vin / (1 − D) — 로우사이드 MOSFET 로 승압', text: `$ speed=5m dt=0.5u
+TXT 0 -3 "부스트(승압) 컨버터: 클럭(20 kHz, 듀티 50 %)이 MOSFET 를 켜고 끈다 → Vout ≈ 5 V ÷ (1 − 0.5)"
+V 0 8 0 2 5
+W 0 2 4 2
+L 4 2 10 2 220u
+W 10 2 10 4
+M 8 6 k=5
+CLK 6 6 freq=20k duty=0.5 name=PWM
+W 6 6 8 6
+D 10 2 16 2 model=schottky
+C 16 2 16 8 100u
+W 16 2 20 2
+R 20 2 20 8 20 name=RL
+W 0 8 20 8
+G 4 8
+P 10 3 SW
+P 18 2 OUT
+scope ch1=SW ch2=OUT tb=20u v1=5 v2=2 o1=-3 o2=-3
+! t=20m VAVG(OUT)=9.2 tol=6%` },
+
+    { group: 'pwr', title: 'LM2596 벅 IC: 12 V → 5 V (폐루프)', desc: '첨두 전류 모드 스위칭 레귤레이터 — 부하가 바뀌어도 5 V 유지', text: `$ speed=2m
+TXT 0 -4 "LM2596 강압 레귤레이터: 12 V → 5 V 1 A  (Vout = 1.23 V × (1 + R1/R2))"
+V 0 10 0 2 12
+W 0 2 6 2
+C 3 2 3 10 100u pol=1
+BUCK 6 2
+W 12 2 14 2
+D 14 10 14 2 model=schottky
+L 14 2 22 2 100u
+C 22 2 22 10 220u pol=1
+W 22 2 30 2
+R 26 2 26 4 3.06k name=R1
+R 26 4 26 10 1k name=R2
+W 12 4 26 4
+R 30 2 30 10 5 name=RL
+W 9 6 9 10
+W 0 10 30 10
+G 6 10
+P 14 2 SW
+P 28 2 VOUT
+scope ch1=VOUT ch2=SW tb=0.5m v1=1 v2=5 o1=-3 o2=-3
+! t=5m VAVG(VOUT)=5 tol=3%` },
+
+    { group: 'pwr', title: 'MT3608 부스트 IC: 3.7 V 배터리 → 5 V', desc: '보조 배터리(파워뱅크)처럼 리튬 전지 전압을 USB 5 V 로 승압', text: `$ speed=2m
+TXT 0 -3 "MT3608 승압 레귤레이터: 3.7 V → 5 V  (Vout = 0.6 V × (1 + R1/R2))"
+V 0 10 0 0 3.7 name=BAT
+W 0 0 6 0
+W 6 0 6 2
+BOOST 6 2
+L 6 0 12 0 100u
+W 12 0 12 2
+D 12 2 18 2 model=schottky
+C 18 2 18 10 47u pol=1
+W 18 2 26 2
+R 22 2 22 4 73.3k name=R1
+R 22 4 22 10 10k name=R2
+W 12 4 22 4
+R 26 2 26 10 25 name=RL
+W 9 6 9 10
+W 0 10 26 10
+G 3 10
+P 12 1 SW
+P 24 2 VOUT
+scope ch1=VOUT ch2=SW tb=0.5m v1=1 v2=2 o1=-3 o2=-3
+! t=10m VAVG(VOUT)=5 tol=3%` },
+
+    { group: 'pwr', title: 'DC-DC 전원 모듈: 24 V → 5 V 2 A', desc: '효율 90 % 모듈 — 출력 전류 2 A 인데 입력 전류는 0.46 A', text: `TXT 0 -2 "DC-DC 모듈 (XL4015 급): 24 V → 5 V · 입력 전력 = 출력 전력 ÷ 효율"
+V 0 6 0 2 24 lp=l
+AM 0 2 4 2 name=IIN
+DCDC 4 2 part=XL4015 vout=5 eff=0.9 ilim=5 uvlo=8
+AM 10 2 14 2 name=IOUT
+R 14 2 14 6 2.5 name=RL
+W 0 6 14 6
+W 7 4 7 6
+G 3 6
+P 14 2 VOUT
+! V(VOUT)=5 I(IOUT)=2 I(IIN)=0.463 tol=3%
+! V1=12 -> V(VOUT)=5 I(IIN)=0.926 tol=3%` },
+
+    { group: 'pwr', title: '정전압: LM317 가변 레귤레이터', desc: 'Vout = 1.25 V × (1 + R2 / R1) — 가변저항으로 출력 조절', text: `TXT 0 -2 "LM317 정전압: Vout = 1.25 V × (1 + R2 / 240 Ω)  (R2 = 가변저항)"
+V 0 10 0 2 15
+W 0 2 4 2
+VREG 4 2 part=LM317 vout=1.25 vdo=1.5 iq=50u
+R 10 2 10 6 240 name=R1
+W 7 4 7 6
+W 7 6 10 6
+POT 10 6 10 10 2k pos=0.36 name=R2
+W 8 8 8 10
+W 10 2 16 2
+R 16 2 16 10 100 name=RL
+W 0 10 16 10
+G 4 10
+P 14 2 VOUT
+! V(VOUT)=5.04 tol=2%
+! R2=0.84 -> V(VOUT)=10.1 tol=3%` },
+
+    { group: 'pwr', title: '정전압: AMS1117-3.3 LDO (드롭아웃)', desc: '5 V → 3.3 V. 입력이 4.4 V 아래로 떨어지면 출력도 떨어진다', text: `TXT 0 -2 "LDO AMS1117-3.3: 입력 − 출력 차이가 1.1 V 보다 작아지면 조절 불가 (드롭아웃)"
+V 0 8 0 2 5 name=USB
+W 0 2 4 2
+VREG 4 2 part=AMS1117-3.3 vout=3.3 vdo=1.1 ilim=1
+W 10 2 14 2
+R 14 2 14 8 33 name=RL
+W 7 4 7 8
+W 0 8 14 8
+G 3 8
+P 12 2 V33
+! V(V33)=3.3 tol=2%
+! USB=4 -> V(V33)=2.9 tol=3%` },
+
+    { group: 'pwr', title: '정전압: TL431 정밀 션트 레귤레이터', desc: 'REF = 2.495 V 가 되도록 전류를 흡수 — Vout = 2.495 × (1 + R1/R2)', text: `TXT 0 -3 "TL431 션트 레귤레이터: Vout = 2.495 V × (1 + R1 / R2) = 4.99 V"
+V 0 10 0 0 12
+W 0 0 8 0
+R 8 0 8 4 470 name=RS
+W 8 4 4 4
+R 4 4 4 6 10k name=R1 lp=l
+W 4 6 6 6
+R 4 6 4 10 10k name=R2 lp=l
+TL431 8 4
+W 8 8 8 10
+W 8 4 14 4
+R 14 4 14 10 1k name=RL
+W 0 10 14 10
+G 2 10
+P 12 4 VOUT
+! V(VOUT)=4.99 tol=1%
+! V1=9 -> V(VOUT)=4.99 tol=1%` },
+
+    { group: 'pwr', title: '정전압: OP앰프 + 트랜지스터 직렬 레귤레이터', desc: '제너 기준 5.1 V × 2 = 10.2 V — 되먹임으로 부하가 변해도 일정', text: `TXT 0 -3 "직렬 레귤레이터: 제너 기준(5.1 V) → OP앰프 → NPN 패스 트랜지스터, 이득 1 + R1/R2 = 2"
+V 0 12 0 0 15
+W 0 0 14 0
+R 3 0 3 3 1k
+Z 3 12 3 3 5.1
+W 3 3 6 3
+OA 6 4 f=1 vp=15 vn=0
+W 10 4 12 4
+Q 12 4
+W 14 0 14 2
+W 14 6 20 6
+R 16 6 16 9 10k name=R1
+R 16 9 16 12 10k name=R2
+W 16 9 5 9
+W 5 9 5 5
+W 5 5 6 5
+R 20 6 20 12 100 name=RL
+W 0 12 20 12
+G 8 12
+P 18 6 VOUT
+! t=0.05 V(VOUT)=10.2 tol=2%` },
+
+    { group: 'pwr', title: '정전류: LM317 LED 드라이버', desc: 'I = 1.25 V ÷ R — 전원 전압이 바뀌어도 LED 전류는 20 mA', text: `TXT 0 -2 "LM317 정전류: I = 1.25 V ÷ 62 Ω ≈ 20 mA (OUT 과 ADJ 사이 저항)"
+V 0 12 0 2 12
+W 0 2 4 2
+VREG 4 2 part=LM317 vout=1.25 vdo=1.5 iq=50u
+R 10 2 10 6 62 name=RSET
+W 7 4 7 6
+W 7 6 12 6
+LED 12 6 12 8 color=white
+LED 12 8 12 10 color=white
+AM 12 10 12 12 name=ILED
+W 0 12 12 12
+G 4 12
+! I(ILED)=0.0202 tol=3%
+! V1=15 -> I(ILED)=0.0202 tol=3%
+! V1=10 -> I(ILED)=0.0202 tol=3%` },
+
+    { group: 'pwr', title: '정전류: OP앰프 + MOSFET 전류 싱크 (전자 부하)', desc: 'I = Vset ÷ Rs — 가변저항으로 전류를 정한다', text: `TXT 0 -2 "정전류 싱크: OP앰프가 Rs 전압을 Vset 과 같게 → I = Vset ÷ 10 Ω"
+V 0 12 0 0 12
+W 0 0 14 0
+POT 3 8 3 0 10k pos=0.0833 name=VSET
+W 3 8 3 12
+W 5 4 6 4
+OA 6 5 f=1 vp=12 vn=0
+W 10 5 12 5
+M 12 5 k=2
+R 14 0 14 3 22 name=LOAD
+W 14 7 5 7
+W 5 7 5 6
+W 5 6 6 6
+R 14 7 14 12 10 name=RS
+W 0 12 14 12
+G 8 12
+P 16 7 VS
+W 14 7 16 7
+! t=0.05 I(LOAD)=0.1 tol=3%` },
+
+    { group: 'pwr', title: '정전류: 트랜지스터 2개 전류 제한', desc: 'Q2 가 Rs 전압을 0.6 V 로 묶어 I ≈ 0.6 V ÷ 33 Ω', text: `TXT 0 -3 "트랜지스터 2개 정전류: Rs 에 걸리는 전압이 Q2 의 V_BE 에 묶인다"
+V 0 14 0 0 12
+W 0 0 12 0
+LED 12 0 12 2 color=red
+LED 12 2 12 4 color=red
+Q 10 6 name=Q1
+R 8 0 8 6 10k
+W 8 6 10 6
+Q 10 10 rot=2 f=1 name=Q2
+W 8 8 8 6
+W 12 8 12 10
+W 10 10 12 10
+R 12 10 12 14 33 name=RS
+W 8 12 8 14
+W 0 14 12 14
+G 4 14
+! I(LED1)=0.019 tol=12%
+! V1=9 -> I(LED1)=0.019 tol=12%` },
+
+    { group: 'pwr', title: '리튬 배터리 충전 (TP4056 · 정전류 → 정전압)', desc: '처음엔 0.5 A 정전류, 4.2 V 에 닿으면 정전압으로 전류가 줄어든다', text: `$ ic=zero
+TXT 0 -2 "TP4056 충전: CC(0.5 A) → CV(4.2 V) — 배터리는 1 F 콘덴서 + 0.2 Ω 로 축소 모델"
+V 0 8 0 2 5 name=USB
+W 0 2 4 2
+VREG 4 2 part=TP4056 vout=4.2 vdo=0.1 ilim=0.5 iq=0.3m
+W 7 4 7 8
+R 10 2 14 2 0.2 name=RBAT
+C 14 2 14 8 1 v0=3.4 name=BAT lbl=배터리
+W 0 8 14 8
+G 3 8
+P 14 2 VBAT
+scope ch1=VBAT ch2=I(RBAT) tb=0.5 v1=0.2 v2=0.1 o1=-4 o2=-4
+! t=0.5 I(RBAT)=0.5 tol=3%
+! t=5 V(VBAT)=4.2 tol=1%` },
+
     // ================================================================ 아날로그 (회로이론 강좌)
     { group: 'ana', title: '전압 분배 (저항 2개)', desc: 'V(A) = 12 × 2k / (1k + 2k) = 8 V', text: `V 0 8 0 2 12
 W 0 2 8 2
@@ -532,7 +821,7 @@ W 2 7 2 4
 DLED 22 4 name=Y
 la ch=A,B,C tb=10n` }
   ];
-  const GROUPS = { mix: '🔀 혼합 신호 (아날로그 + 디지털)', ana: '〰 아날로그', dig: '🔢 디지털' };
+  const GROUPS = { mix: '🔀 혼합 신호 (아날로그 + 디지털)', pwr: '🔋 전원 회로 (AC-DC · DC-DC · 정전압 · 정전류)', ana: '〰 아날로그', dig: '🔢 디지털' };
   const api = { EXAMPLES, GROUPS };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.SIM_EXAMPLES = api;

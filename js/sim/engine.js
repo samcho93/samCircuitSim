@@ -31,7 +31,8 @@
   const isAnalog = (t) => TYPES[t] && TYPES[t].dom === 'a';
 
   const NAME_PREFIX = Object.assign({ R: 'R', POT: 'VR', C: 'C', L: 'L', V: 'V', AC: 'V', I: 'I', S: 'S', PB: 'SW', SPDT: 'S', FUSE: 'F', D: 'D', Z: 'ZD', LED: 'LED',
-    LAMP: 'LP', AM: 'AM', VM: 'VM', Q: 'Q', M: 'M', J: 'J', OA: 'U', X: 'T', ASW: 'AS', RLY: 'K' }, D.NAME_PREFIX);
+    LAMP: 'LP', AM: 'AM', VM: 'VM', Q: 'Q', M: 'M', J: 'J', OA: 'U', X: 'T', ASW: 'AS', RLY: 'K',
+    VREG: 'U', TL431: 'U', BUCK: 'U', BOOST: 'U', DCDC: 'PS', ACDC: 'PS' }, D.NAME_PREFIX);
 
   // ================================================================= 파싱
   function tokenize(line) {
@@ -59,7 +60,8 @@
   const isNumTok = (t) => typeof t === 'string' && /^[-+]?\d+(\.\d+)?$/.test(t);
 
   const NUM_PARAMS = ['r', 'c', 'l', 'v', 'amp', 'freq', 'phase', 'dc', 'duty', 'i', 'vz', 'w', 'beta', 'is', 'va', 'br', 'vt', 'k', 'lambda',
-    'idss', 'vp', 'vn', 'gain', 'drop', 'gbw', 'n', 'pos', 'on', 'pnp', 'p', 'r0', 'v0', 'i0', 'rot', 'f', 'min', 'max', 'size', 'rs', 'ron', 'a', 'ion', 'inv'];
+    'idss', 'vp', 'vn', 'gain', 'drop', 'gbw', 'n', 'pos', 'on', 'pnp', 'p', 'r0', 'v0', 'i0', 'rot', 'f', 'min', 'max', 'size', 'rs', 'ron', 'a', 'ion', 'inv',
+    'vout', 'vdo', 'ilim', 'iq', 'eff', 'uvlo', 'fsw', 'vref', 'kp', 'ki', 'tss', 'vmin'];
 
   /**
    * 회로 텍스트 → { elements, opts, scope, meter, la, tt, checks, errors }
@@ -380,6 +382,7 @@
       if (!dt) {
         dt = this.fmax > 0 ? 1 / (this.fmax * 400) : 1e-4;
         if (this.fclk > 0) dt = Math.min(dt, 1 / (this.fclk * 200));
+        this.aEls.forEach((e) => { if (e.type === 'BUCK' || e.type === 'BOOST') dt = Math.min(dt, 1 / ((+e.params.fsw || 50000) * 100)); });
       }
       this.dt = dt;
       if (this.analog) { this.analog.dt = dt; this.analog.h = dt; }
@@ -733,7 +736,8 @@
       const el = this.findEl(a);
       if (!el || !isAnalog(el.type)) return NaN;
       const inf = this.info(el);
-      const map = { I: 'i', P: 'p', VBE: 'vbe', VCE: 'vce', IB: 'ib', IC: 'ic', IE: 'ie', ID: 'id', VGS: 'vgs', VDS: 'vds', VOUT: 'vout', VIN: 'vin' };
+      const map = { I: 'i', P: 'p', VBE: 'vbe', VCE: 'vce', IB: 'ib', IC: 'ic', IE: 'ie', ID: 'id', VGS: 'vgs', VDS: 'vds', VOUT: 'vout', VIN: 'vin',
+        IIN: 'iin', PIN: 'pin', POUT: 'pout', DUTY: 'duty', VREF: 'vref' };
       const key = map[f];
       if (!key) return NaN;
       let val = inf[key];
@@ -925,9 +929,11 @@
     return out;
   }
   function runChecks(text) {
-    const circ = typeof text === 'string' ? parse(text) : text;
+    if (typeof text !== 'string') text = serialize(text);
+    const circ = parse(text);
     if (circ.errors.length) return { errors: circ.errors, results: [] };
-    return { errors: [], results: runDigitalChecks(circ).concat(runAnalogChecks(circ)) };
+    // 검사가 부품 값을 바꾸므로(V1=12 …) 따로 파싱한 회로로 돌린다
+    return { errors: [], results: runDigitalChecks(circ).concat(runAnalogChecks(parse(text))) };
   }
 
   const api = {

@@ -107,7 +107,14 @@
     OA: { kind: 'p', name: '연산증폭기', def: { gain: 1e5, vp: 15, vn: -15, drop: 1, gbw: 1e6 } },
     X: { kind: 'p', name: '변압기', def: { n: 0.1, l: 10, k: 0.999 } },
     ASW: { kind: 'p', name: '아날로그 스위치', def: { ron: 50, inv: 0 }, dpins: [2] },
-    RLY: { kind: 'p', name: '릴레이', def: { r: 100, ion: 0.02 } }
+    RLY: { kind: 'p', name: '릴레이', def: { r: 100, ion: 0.02 } },
+    // ---- 전원 IC · 모듈 (동작 모델)
+    VREG: { kind: 'p', name: '선형 레귤레이터', desc: 'OUT − GND(ADJ) = vout 로 유지 (입력이 부족하면 드롭아웃, 전류가 ilim 을 넘으면 정전류)', def: { vout: 5, vdo: 2, ilim: 1.5, iq: 0.005, part: '7805' } },
+    TL431: { kind: 'p', name: 'TL431 션트 레귤레이터', desc: 'REF 가 A 보다 2.495 V 높아지도록 K→A 로 전류를 흘린다 (정밀 기준 전압)', def: {} },
+    BUCK: { kind: 'p', name: '벅(강압) 컨버터 IC', desc: '내부 스위치 VIN→SW, 첨두 전류 모드 PWM. FB 를 vref 로 맞춘다 (외부 L · 다이오드 · C 필요)', def: { fsw: 50000, vref: 1.23, ilim: 3, ron: 0.1, kp: 10, ki: 20000, tss: 0.001, part: 'LM2596' } },
+    BOOST: { kind: 'p', name: '부스트(승압) 컨버터 IC', desc: '내부 스위치 SW→GND, 첨두 전류 모드 PWM. FB 를 vref 로 맞춘다 (외부 L · 다이오드 · C 필요)', def: { fsw: 50000, vref: 0.6, ilim: 4, ron: 0.1, kp: 2, ki: 4000, tss: 0.002, part: 'MT3608' } },
+    DCDC: { kind: 'p', name: 'DC-DC 전원 모듈', desc: '평균 모델: OUT = vout, 입력 전력 = 출력 전력 ÷ 효율 (입력이 uvlo 보다 낮으면 꺼짐)', def: { vout: 5, eff: 0.9, ilim: 3, uvlo: 6, part: 'DC-DC 모듈' } },
+    ACDC: { kind: 'p', name: 'AC-DC 전원 모듈 (SMPS)', desc: '교류 입력(L · N) → 절연된 직류 출력. 입력 첨두 전압이 vmin 보다 높으면 동작', def: { vout: 5, eff: 0.75, ilim: 0.6, vmin: 100, part: 'HLK-PM05' } }
   };
   Object.keys(TYPES).forEach((k) => { TYPES[k].dom = 'a'; });
 
@@ -160,6 +167,14 @@
         return [xf(el, 0, 0), xf(el, 4, 0), xf(el, 2, -2)];          // A, B, 제어
       case 'RLY':
         return [xf(el, 0, 0), xf(el, 0, 4), xf(el, 4, 4), xf(el, 5, 0), xf(el, 3, 0)];   // 코일1, 코일2, COM, NO, NC
+      case 'VREG': case 'DCDC':
+        return [xf(el, 0, 0), xf(el, 6, 0), xf(el, 3, 2)];          // IN, OUT, GND(ADJ)
+      case 'BUCK': case 'BOOST':
+        return [xf(el, 0, 0), xf(el, 6, 0), xf(el, 6, 2), xf(el, 3, 4)];   // VIN, SW, FB, GND
+      case 'ACDC':
+        return [xf(el, 0, 0), xf(el, 0, 2), xf(el, 6, 0), xf(el, 6, 2)];   // L, N, +V, −V
+      case 'TL431':
+        return [xf(el, 0, 0), xf(el, 0, 4), xf(el, -2, 2)];         // K, A, REF
       default:
         return [[el.x1, el.y1], [el.x2, el.y2]];
     }
@@ -167,8 +182,28 @@
   const PIN_NAMES = {
     Q: ['B', 'C', 'E'], M: ['G', 'D', 'S'], J: ['G', 'D', 'S'], OA: ['−', '+', '출력'], X: ['1차 ●', '1차', '2차 ●', '2차'],
     POT: ['A', 'B', '와이퍼'], SPDT: ['공통', '접점 0', '접점 1'], D: ['A', 'K'], LED: ['A', 'K'], Z: ['A', 'K'], V: ['−', '+'], AC: ['−', '+'],
-    ASW: ['A', 'B', 'CTL'], RLY: ['코일 1', '코일 2', 'COM', 'NO', 'NC']
+    ASW: ['A', 'B', 'CTL'], RLY: ['코일 1', '코일 2', 'COM', 'NO', 'NC'],
+    VREG: ['IN', 'OUT', 'GND'], DCDC: ['IN', 'OUT', 'GND'], BUCK: ['VIN', 'SW', 'FB', 'GND'], BOOST: ['VIN', 'SW', 'FB', 'GND'],
+    ACDC: ['L', 'N', '+V', '−V'], TL431: ['K', 'A', 'REF']
   };
+  const softplus = (z) => (z > 30 ? z : z < -30 ? Math.exp(z) : Math.log1p(Math.exp(z)));
+  const sigm = (z) => (z > 40 ? 1 : z < -40 ? 0 : 1 / (1 + Math.exp(-z)));
+  /** 부드러운 최솟값과 두 미분 */
+  function softmin(a, b, w) {
+    const m = Math.min(a, b);
+    const ea = Math.exp(-(a - m) / w), eb = Math.exp(-(b - m) / w), s = ea + eb;
+    return { v: m - w * Math.log(s), da: ea / s, db: eb / s };
+  }
+  /**
+   * 출력 특성 g(i): 출력 전압이 내려가는 양.  정상 영역은 내부 저항 rs, i > ilim 이면 급격히(정전류),
+   * i < 0 (전류를 빨아들여야 하는 경우)이면 거의 막힌다 (출력이 목표보다 올라갈 수 있다)
+   */
+  function outG(i, ilim) {
+    const rs = 0.02, Rl = 200, wl = Math.max(1e-3, 0.005 * ilim), Rr = 1e4, wr = 1e-7;
+    const g = rs * i + Rl * wl * softplus((i - ilim) / wl) - Rr * wr * softplus(-i / wr);
+    const gp = rs + Rl * sigm((i - ilim) / wl) + Rr * sigm(-i / wr);
+    return { g, gp };
+  }
 
   // ================================================================= 선형대수
   /** 부분 피벗 LU 분해 (제자리). 실패하면 false */
@@ -278,9 +313,9 @@
     const m = DIODE_MODELS[String(p.model || '1n4148').toLowerCase()] || DIODE_MODELS['1n4148'];
     return { is: p.is != null ? +p.is : m.is, n: p.n != null ? +p.n : m.n };
   }
-  const NONLINEAR = ['D', 'Z', 'LED', 'Q', 'M', 'J', 'OA'];
+  const NONLINEAR = ['D', 'Z', 'LED', 'Q', 'M', 'J', 'OA', 'VREG', 'TL431', 'DCDC', 'ACDC'];
   /** 시간에 따라 변하는(상태가 있는) 소자: 이것이 있으면 고정 시간 간격으로 함께 진행해야 한다 */
-  const DYNAMIC = ['C', 'L', 'X', 'AC', 'OA', 'FUSE'];
+  const DYNAMIC = ['C', 'L', 'X', 'AC', 'OA', 'FUSE', 'BUCK', 'BOOST', 'ACDC'];
 
   // ================================================================= 해석 코어
   /**
@@ -301,7 +336,7 @@
       els.forEach((el) => {
         el._br = -1;
         switch (el.type) {
-          case 'V': case 'AC': case 'AM': case 'L': case 'OA': el._br = nb++; break;
+          case 'V': case 'AC': case 'AM': case 'L': case 'OA': case 'VREG': case 'DCDC': case 'ACDC': el._br = nb++; break;
           case 'X': el._br = nb; nb += 2; break;
         }
       });
@@ -334,6 +369,8 @@
         if (el.type === 'OA') el.st.xs = 0;
         if (el.type === 'FUSE') { el.st.blown = false; el.st.heat = 0; }
         if (el.type === 'RLY') el.st.on = false;
+        if (el.type === 'BUCK' || el.type === 'BOOST') Object.assign(el.st, { on: false, cyc: -1, ipk: 0, integ: 0, duty: 0, tOn: 0 });
+        if (el.type === 'ACDC') { el.st.vpk = 0; el.st.gin = 0; }
         el.lim = {};
       });
       this.x.fill(0);
@@ -404,6 +441,25 @@
             this._g(A, N, n[0], n[1], 1 / Math.max(1e-3, +p.r || 100));
             this._g(A, N, n[2], el.st.on ? n[3] : n[4], 1 / 0.05);
             break;
+          case 'BUCK': case 'BOOST': {
+            const g = el.st.on ? 1 / Math.max(1e-3, +p.ron || 0.1) : 1e-8;
+            if (el.type === 'BUCK') this._g(A, N, n[0], n[1], g); else this._g(A, N, n[1], n[3], g);
+            this._g(A, N, n[2], n[3], 1e-9);
+            break;
+          }
+          case 'VREG': case 'DCDC': case 'ACDC': {
+            // 가지 전류 i: 출력 단자(OUT / +V)로 흘러나가는 전류
+            const r = this.nNodes - 1 + el._br;
+            const nO = el.type === 'ACDC' ? n[2] : n[1];
+            if (nO > 0) A[(nO - 1) * N + r] -= 1;
+            if (el.type === 'VREG') { if (n[0] > 0) A[(n[0] - 1) * N + r] += 1; }
+            else if (el.type === 'DCDC') { if (n[2] > 0) A[(n[2] - 1) * N + r] += 1; }
+            else { if (n[3] > 0) A[(n[3] - 1) * N + r] += 1; this._g(A, N, n[1], n[3], 1e-9); }
+            break;
+          }
+          case 'TL431':
+            this._g(A, N, n[0], n[1], GMIN); this._g(A, N, n[2], n[1], GMIN);
+            break;
           case 'C':
             if (!dc) this._g(A, N, n[0], n[1], (trap ? 2 : 1) * (+p.c) / dt);
             break;
@@ -461,6 +517,7 @@
           case 'V': b[this.nNodes - 1 + el._br] += +p.v || 0; break;
           case 'AC': b[this.nNodes - 1 + el._br] += waveValue(p, t); break;
           case 'I': this._i(b, n[0], n[1], +p.i || 0); break;
+          case 'VREG': this._i(b, n[0], n[2], +p.iq || 0); break;
           case 'C': {
             if (dc) break;
             const geq = (trap ? 2 : 1) * (+p.c) / dt;
@@ -522,8 +579,88 @@
           case 'M': this.stampFET(A, b, el, false); break;
           case 'J': this.stampFET(A, b, el, true); break;
           case 'OA': this.stampOpamp(A, b, el, dc); break;
+          case 'VREG': case 'DCDC': case 'ACDC': this.stampSupply(A, b, el); break;
+          case 'TL431': this.stampTL431(A, b, el); break;
         }
       }
+    }
+
+    /** 전원 IC · 모듈의 출력 가지 방정식:  V(OUT) = T(목표, 단자 전압의 함수) − g(i) */
+    stampSupply(A, b, el) {
+      const p = el.params, n = el._n, N = this.N;
+      const r = this.nNodes - 1 + el._br;
+      const ilim = Math.max(1e-4, +p.ilim || 1);
+      // 가지 전류는 한 번에 너무 크게 바뀌지 않게 (뉴턴 수렴)
+      let i = this.x[r];
+      const li = el.lim.i;
+      if (li != null) {
+        const m = Math.max(0.25 * ilim, 0.02);
+        if (i > li + m) { i = li + m; LIMITED = true; } else if (i < li - m) { i = li - m; LIMITED = true; }
+      }
+      el.lim.i = i;
+      const V = (k) => this.nv(n[k]);
+      let nO, T, dT;   // dT: [[마디, ∂T/∂V]]
+      if (el.type === 'VREG') {
+        const vout = +p.vout || 0, vdo = p.vdo != null ? +p.vdo : 2;
+        const s = softmin(V(2) + vout, V(0) - vdo, 0.03);
+        nO = n[1]; T = s.v; dT = [[n[2], s.da], [n[0], s.db]];
+      } else if (el.type === 'DCDC') {
+        const vout = +p.vout || 0, uv = p.uvlo != null ? +p.uvlo : 0;
+        const z = (V(0) - V(2) - uv) / 0.2, en = sigm(z), den = en * (1 - en) / 0.2;
+        nO = n[1]; T = V(2) + vout * en; dT = [[n[2], 1 - vout * den], [n[0], vout * den]];
+      } else {
+        const en = sigm((el.st.vpk - (+p.vmin || 0)) / 5);
+        nO = n[2]; T = V(3) + (+p.vout || 0) * en; dT = [[n[3], 1]];
+        // 입력: 앞 단계의 전력으로 정한 등가 컨덕턴스
+        this._g(A, N, n[0], n[1], el.st.gin + 1e-9);
+      }
+      const { g, gp } = outG(i, ilim);
+      if (nO > 0) A[r * N + nO - 1] += 1;
+      let rhs = T - g + gp * i;
+      dT.forEach(([nd, d]) => { if (nd > 0) A[r * N + nd - 1] -= d; rhs -= d * this.nv(nd); });
+      A[r * N + r] += gp;
+      b[r] += rhs;
+      el._T = T;
+      if (el.type === 'DCDC') {
+        // 입력 전류 Iin = Pout / (효율 · Vin): IN → 모듈 → GND
+        const eff = Math.max(0.05, +p.eff || 0.9);
+        const vo = V(1) - V(2);
+        let vin = V(0) - V(2), dvin = 1;
+        if (vin < 0.5) { vin = 0.5; dvin = 0; }
+        const P = vo * i, k = 1 / (eff * vin);
+        const Iin = P * k;
+        const dO = i * k, dI = -P * k / vin * dvin, dG = -i * k + P * k / vin * dvin, di = vo * k;
+        const lin = Iin - dO * V(1) - dI * V(0) - dG * V(2) - di * i;
+        [[n[0], 1], [n[2], -1]].forEach(([row, s]) => {
+          if (row <= 0) return;
+          const R = (row - 1) * N;
+          if (n[1] > 0) A[R + n[1] - 1] += s * dO;
+          if (n[0] > 0) A[R + n[0] - 1] += s * dI;
+          if (n[2] > 0) A[R + n[2] - 1] += s * dG;
+          A[R + r] += s * di;
+          b[row - 1] -= s * lin;
+        });
+      }
+    }
+
+    /** TL431: REF − A = 2.495 V 가 되도록 K → A 로 전류 (고이득 트랜스컨덕턴스) */
+    stampTL431(A, b, el) {
+      const n = el._n, N = this.N;
+      const Gm = 20, w = 0.002;
+      let x = this.nv(n[2]) - this.nv(n[1]) - 2.495;
+      const lx = el.lim.x;
+      if (lx != null && Math.abs(x - lx) > 0.05) { x = lx + Math.sign(x - lx) * 0.05; LIMITED = true; }
+      el.lim.x = x;
+      const y = this.nv(n[0]) - this.nv(n[1]);
+      const sp = softplus(x / w), sx = sigm(x / w), sy = sigm((y - 1) / 0.1);
+      const f = Gm * w * sp * sy + 1e-9 * y;
+      const fx = Gm * sx * sy, fy = Gm * w * sp * sy * (1 - sy) / 0.1 + 1e-9;
+      // 단자 전압 [K, A, REF] 에 대한 미분
+      const J = [fy, -fx - fy, fx];
+      const VA = this.nv(n[1]);
+      const Vv = [VA + y, VA, VA + x + 2.495];
+      this._nl(A, b, N, [n[0], n[1], n[2]], Vv, [f, -f, 0], [J, J.map((v) => -v), [0, 0, 0]]);
+      el.op = { ika: f, vref: x + 2.495, vka: y };
     }
 
     stampBJT(A, b, el) {
@@ -739,12 +876,12 @@
         this.h = this.dt;
         return;
       }
-      this.commitStep(h);
+      this.commitStep(h, t);
       this.t = t;
       if (depth === 0) this.h = this.dt;
     }
     /** 풀린 해로 상태 변수(콘덴서 전압 · 코일 전류 …)를 갱신 */
-    commitStep(dt) {
+    commitStep(dt, t) {
       const trap = this.method === 'trap';
       this.els.forEach((el) => {
         const n = el._n, st = el.st, p = el.params;
@@ -767,10 +904,48 @@
           const i = (this.nv(n[0]) - this.nv(n[1])) / FUSE_R;
           st.heat = Math.max(0, st.heat + ((i * i) / (a * a) - 1) * dt);
           if (st.heat > 0.05) { st.blown = true; this._baseDirty = true; this.visualDirty = true; }
+        } else if (el.type === 'BUCK' || el.type === 'BOOST') this.switcher(el, dt, t);
+        else if (el.type === 'ACDC') {
+          const v = Math.abs(this.nv(n[0]) - this.nv(n[1]));
+          st.vpk = Math.max(v, st.vpk * Math.exp(-dt / 0.1));
+          const pout = Math.max(0, (this.nv(n[2]) - this.nv(n[3])) * this.brI(el._br));
+          const vrms2 = Math.max(100, st.vpk * st.vpk / 2);
+          st.gin = pout / Math.max(0.05, +p.eff || 0.75) / vrms2;
         }
       });
       this.updateRelays();
     }
+    /**
+     * 스위칭 레귤레이터 제어기 (첨두 전류 모드):
+     *  주기가 시작될 때 FB 오차로 첨두 전류 명령 ipk 를 정하고(PI) 스위치를 켠다.
+     *  스위치 전류가 ipk(− 기울기 보상)에 닿거나 최대 듀티가 되면 끈다.
+     */
+    switcher(el, dt, t) {
+      const p = el.params, n = el._n, st = el.st;
+      const T = 1 / Math.max(1, +p.fsw || 50000);
+      const k = Math.floor(t / T + 1e-9);
+      const phase = t - k * T;
+      const ilim = +p.ilim || 3, ron = Math.max(1e-3, +p.ron || 0.1);
+      const was = st.on;
+      if (k !== st.cyc) {
+        if (st.cyc >= 0) st.duty = st.tOn / T;
+        st.cyc = k; st.tOn = 0;
+        const e = (+p.vref || 1.23) - (this.nv(n[2]) - this.nv(n[3]));
+        const ki = +p.ki || 0, kp = +p.kp || 0;
+        const ss = Math.min(1, t / Math.max(1e-6, +p.tss || 0.001));
+        st.integ = Math.max(-0.2 * ilim, Math.min(ilim * ss, st.integ + ki * e * T));
+        st.ipk = Math.max(0, Math.min(ilim * Math.max(0.05, ss), kp * e + st.integ));
+        st.on = st.ipk > 1e-3 && (this.nv(n[0]) - this.nv(n[3])) > 2;
+      } else if (st.on) {
+        st.tOn += dt;
+        const isw = el.type === 'BUCK' ? (this.nv(n[0]) - this.nv(n[1])) / ron : (this.nv(n[1]) - this.nv(n[3])) / ron;
+        st.isw = isw;
+        const thr = st.ipk - 0.3 * ilim * phase / T;
+        if (isw >= thr || phase >= 0.92 * T) st.on = false;
+      }
+      if (st.on !== was) this._baseDirty = true;
+    }
+
     /** 릴레이: 코일 전류가 ion 을 넘으면 붙고, 절반 아래로 떨어지면 떨어진다. 바뀌면 true */
     updateRelays() {
       let ch = false;
@@ -814,6 +989,20 @@
           const is = (v(2) - v(k)) / 0.05;
           return k === 3 ? [ic, -ic, is, -is, 0] : [ic, -ic, is, 0, -is];
         }
+        case 'VREG': { const i = this.brI(el._br), iq = +p.iq || 0; return [i + iq, -i, -iq]; }
+        case 'DCDC': {
+          const i = this.brI(el._br), eff = Math.max(0.05, +p.eff || 0.9);
+          const vin = Math.max(0.5, v(0) - v(2));
+          const iin = (v(1) - v(2)) * i / (eff * vin);
+          return [iin, -i, i - iin];
+        }
+        case 'ACDC': { const i = this.brI(el._br), ii = (el.st.gin + 1e-9) * (v(0) - v(1)); return [ii, -ii, -i, i]; }
+        case 'BUCK': case 'BOOST': {
+          const g = el.st && el.st.on ? 1 / Math.max(1e-3, +p.ron || 0.1) : 1e-8;
+          if (el.type === 'BUCK') { const i = (v(0) - v(1)) * g; return [i, -i, 0, 0]; }
+          const i = (v(1) - v(3)) * g; return [0, i, 0, -i];
+        }
+        case 'TL431': { const o = el.op || { ika: 0 }; return [o.ika, -o.ika, 0]; }
         case 'C': return [el.st.i, -el.st.i];
         case 'L': return [this.brI(el._br), -this.brI(el._br)];
         case 'X': return [this.brI(el._br), -this.brI(el._br), this.brI(el._br + 1), -this.brI(el._br + 1)];
@@ -876,6 +1065,34 @@
         case 'G':
           out.v = 0;
           break;
+        case 'VREG': case 'DCDC': {
+          const vin = v(0) - v(2), vout = v(1) - v(2), i = -ic[1], iin = ic[0];
+          const target = +p.vout;
+          let mode = '정전압 (CV)';
+          if (i > (+p.ilim || 1) * 0.98) mode = '전류 제한 (CC)';
+          else if (el.type === 'VREG' && vout < target - 0.05 && vin - vout < (+p.vdo || 2) + 0.1) mode = '드롭아웃 (입력 부족)';
+          else if (el.type === 'DCDC' && vin < (+p.uvlo || 0)) mode = '꺼짐 (입력 저전압)';
+          Object.assign(out, { vin, vout, i, iin, pin: vin * iin, pout: vout * i, mode });
+          out.ploss = out.pin - out.pout;
+          out.v = vout; out.p = out.ploss;
+          break;
+        }
+        case 'ACDC': {
+          const vout = v(2) - v(3), i = -ic[2];
+          Object.assign(out, { vpk: el.st.vpk, vout, i, pout: vout * i, pin: vout * i / (+p.eff || 0.75), on: el.st.vpk > (+p.vmin || 0), v: vout });
+          break;
+        }
+        case 'BUCK': case 'BOOST': {
+          const st = el.st || {};
+          Object.assign(out, { vin: v(0) - v(3), vsw: v(1) - v(3), vfb: v(2) - v(3), duty: st.duty || 0, ipk: st.ipk || 0, on: !!st.on, isw: ic[el.type === 'BUCK' ? 0 : 1] });
+          out.v = out.vin;
+          break;
+        }
+        case 'TL431': {
+          const o = el.op || {};
+          Object.assign(out, { vref: v(2) - v(1), vka: v(0) - v(1), i: o.ika || 0, v: v(0) - v(1), p: (v(0) - v(1)) * (o.ika || 0) });
+          break;
+        }
         default: {
           const vv = v(0) - v(1);
           const i = ic[0] || 0;

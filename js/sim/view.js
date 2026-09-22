@@ -18,6 +18,7 @@
   const LOGIC_NAME = { 0: 'LOW (0)', 1: 'HIGH (1)', 2: '불확정 X', 3: '연결 안 됨 Z' };
   const LED_COLORS = { red: '#ff3b30', green: '#22e05a', yellow: '#ffd60a', blue: '#3b82f6', orange: '#ff9500', white: '#f5f5f5' };
   const isDig = (t) => CS.isDigital(t);
+  const PWR_BOX = { VREG: 20, DCDC: 20, BUCK: 60, BOOST: 60, ACDC: 60 };
 
   // ================================================================= 라벨
   function valueLabel(el) {
@@ -346,6 +347,54 @@
         label = { x: Pg(40, 12)[0], y: Pg(40, 12)[1] + 12, lines: [name].filter(Boolean), anchor: 'middle' };
         break;
       }
+      case 'VREG': case 'DCDC': case 'BUCK': case 'BOOST': case 'ACDC': {
+        const t = el.type;
+        const tall = t === 'VREG' || t === 'DCDC' ? 20 : 60;
+        inner = `<rect x="20" y="-20" width="80" height="${tall + 20}" rx="4" class="sb box-body pwr-body"/>`;
+        if (t === 'ACDC') inner += '<path class="sb thin" d="M60 -16 L60 56" stroke-dasharray="4 3"/>';
+        const lbls = [];
+        const pl = (pts, pin, txt, tx, ty) => { polyLead(pts, pin); lbls.push([txt, tx, ty]); };
+        if (t === 'VREG' || t === 'DCDC') {
+          pl([[0, 0], [20, 0]], 0, 'IN', 32, 0);
+          pl([[120, 0], [100, 0]], 1, 'OUT', 86, 0);
+          pl([[60, 40], [60, 20]], 2, t === 'VREG' && /317/.test(String(p.part)) ? 'ADJ' : 'GND', 60, 12);
+        } else if (t === 'ACDC') {
+          pl([[0, 0], [20, 0]], 0, 'L', 30, 0);
+          pl([[0, 40], [20, 40]], 1, 'N', 30, 40);
+          pl([[120, 0], [100, 0]], 2, '+V', 88, 0);
+          pl([[120, 40], [100, 40]], 3, '−V', 88, 40);
+        } else {
+          pl([[0, 0], [20, 0]], 0, 'VIN', 34, 0);
+          pl([[120, 0], [100, 0]], 1, 'SW', 88, 0);
+          pl([[120, 40], [100, 40]], 2, 'FB', 88, 40);
+          pl([[60, 80], [60, 60]], 3, 'GND', 60, 52);
+        }
+        lbls.forEach(([txt, tx, ty]) => { const q = Pg(tx, ty); extra += `<text x="${q[0]}" y="${q[1] + 3.5}" class="pin-t" text-anchor="middle">${esc(txt)}</text>`; });
+        const title = String(p.part || CS.TYPES[t].name);
+        const tq = Pg(60, t === 'VREG' || t === 'DCDC' ? -9 : 12);
+        extra += `<text x="${tq[0]}" y="${tq[1] + 4}" class="box-title" text-anchor="middle">${esc(title.length > 11 ? title.slice(0, 11) : title)}</text>`;
+        if (t !== 'VREG' && t !== 'DCDC') {
+          const sub = { BUCK: '강압 DC-DC', BOOST: '승압 DC-DC', ACDC: 'AC → DC' }[t];
+          const sq = Pg(60, 26);
+          extra += `<text x="${sq[0]}" y="${sq[1] + 4}" class="pin-t" text-anchor="middle">${sub}</text>`;
+        }
+        const top = [Pg(20, -20), Pg(100, -20), Pg(20, tall), Pg(100, tall)];
+        const ty0 = Math.min(...top.map((q) => q[1]));
+        const cxx = top.reduce((s, q) => s + q[0], 0) / 4;
+        label = { x: cxx, y: ty0 - 8, lines: [[name, valueLabel(el)].filter(Boolean).join(' ')].filter(Boolean), anchor: 'middle' };
+        break;
+      }
+      case 'TL431': {
+        inner = '<path class="sf-soft" d="M-12 52 L12 52 L0 32 Z"/><path class="sb" d="M-14 36 L-12 32 L12 32 L14 28"/><path class="sb" d="M-40 40 L-7 40"/>';
+        polyLead([[0, 0], [0, 32]], 0);
+        polyLead([[0, 80], [0, 52]], 1);
+        polyLead([[-40, 40], [-30, 40]], 2);
+        const lq = Pg(-24, 54);
+        extra += `<text x="${lq[0]}" y="${lq[1]}" class="pin-t" text-anchor="middle">REF</text>`;
+        const c0 = Pg(0, 40), c1 = Pg(1, 40);
+        label = { x: c0[0] + (c1[0] >= c0[0] ? 20 : -20), y: c0[1] - 2, lines: [name, 'TL431'].filter(Boolean), anchor: c1[0] >= c0[0] ? 'start' : 'end' };
+        break;
+      }
       case 'RLY': {
         inner = `<rect x="-11" y="20" width="22" height="40" rx="2" class="sb" fill="var(--sch-bg)"/><path class="sb thin" d="M-11 20 L11 60"/>
           <circle cx="60" cy="24" r="3" class="sb" fill="var(--sch-bg)"/><circle cx="100" cy="24" r="3" class="sb" fill="var(--sch-bg)"/><circle cx="80" cy="56" r="3" class="sb" fill="var(--sch-bg)"/>
@@ -365,7 +414,8 @@
       }
     }
     body = `<g transform="${T}">${inner}</g>${extra}`;
-    const ctr = el.type === 'OA' ? Pg(34, 0) : el.type === 'X' ? Pg(40, 40) : el.type === 'ASW' ? Pg(40, -6) : el.type === 'RLY' ? Pg(50, 40) : Pg(26, 0);
+    const PWR = { VREG: [60, 0], DCDC: [60, 0], BUCK: [60, 20], BOOST: [60, 20], ACDC: [60, 20], TL431: [0, 42] };
+    const ctr = el.type === 'OA' ? Pg(34, 0) : el.type === 'X' ? Pg(40, 40) : el.type === 'ASW' ? Pg(40, -6) : el.type === 'RLY' ? Pg(50, 40) : PWR[el.type] ? Pg(...PWR[el.type]) : Pg(26, 0);
     return { body, leads, label, center: ctr };
   }
 
@@ -642,6 +692,8 @@
         if (el.type === 'OA') { const m = mat(el); [[10, -40], [72, 40], [34, -60]].forEach(([a, b]) => add(...apply(m, a, b))); }
         if (el.type === 'Q' || el.type === 'M' || el.type === 'J') { const m = mat(el); [[54, 0], [2, 0]].forEach(([a, b]) => add(...apply(m, a, b))); }
         if (el.type === 'RLY') { const m = mat(el); [[-40, 40], [115, 70]].forEach(([a, b]) => add(...apply(m, a, b))); }
+        if (PWR_BOX[el.type]) { const m = mat(el); [[20, -40], [100, PWR_BOX[el.type]]].forEach(([a, b]) => add(...apply(m, a, b))); }
+        if (el.type === 'TL431') { const m = mat(el); [[-44, 30], [50, 50]].forEach(([a, b]) => add(...apply(m, a, b))); }
         if (el.type === 'G') add(el.x * GRID, el.y * GRID + 22);
         if (el.type === 'TXT') { add(el.x * GRID, el.y * GRID - 14); add(el.x * GRID + String(el.params.text || '').length * 8, el.y * GRID + 4); }
         if (el.type === 'P') add(el.x * GRID + 30, el.y * GRID - 20);
@@ -1130,7 +1182,7 @@
           if (Math.abs(along - g.c) > Math.max(g.B / 2 + 6, 12)) dist += 8;
           if (el.type === 'POT' || el.type === 'SPDT') dist = Math.min(dist, Math.hypot(p.x - cx, p.y - cy) - 10);
         } else if (el.type === 'P' || el.type === 'N') dist = Math.hypot(p.x - cx, p.y - cy) - (el.type === 'N' ? 12 : 0);
-        else dist = Math.hypot(p.x - cx, p.y - cy) - (el.type === 'OA' ? 28 : el.type === 'X' ? 30 : el.type === 'RLY' ? 36 : 18);
+        else dist = Math.hypot(p.x - cx, p.y - cy) - (el.type === 'OA' ? 28 : el.type === 'X' ? 30 : el.type === 'RLY' ? 36 : PWR_BOX[el.type] ? 34 : 18);
         if (dist < be) { be = dist; bestEl = el; }
       });
       if (bestEl && be < Math.max(14, 16 / this.pxPerUnit())) return { kind: 'el', el: bestEl };
@@ -1204,6 +1256,22 @@
           break;
         case 'RLY':
           rows = row('접점', inf.on ? 'COM–NO 붙음' : 'COM–NC 붙음') + row('코일 전압', F(inf.v, 'V')) + row('코일 전류', F(Math.abs(inf.i), 'A')) + row('동작 전류', F(+el.params.ion || 0.02, 'A')) + row('접점 전류', F(Math.abs(inf.isw), 'A'));
+          break;
+        case 'VREG': case 'DCDC':
+          rows = row('동작', inf.mode) + row('입력', `${F(inf.vin, 'V')} · ${F(inf.iin, 'A')}`) + row('출력', `${F(inf.vout, 'V')} · ${F(inf.i, 'A')}`)
+            + row('입력 전력', F(inf.pin, 'W')) + row('출력 전력', F(inf.pout, 'W')) + row(el.type === 'VREG' ? '발열 (손실)' : '손실', F(inf.ploss, 'W'))
+            + row('효율', inf.pin > 1e-9 ? (inf.pout / inf.pin * 100).toFixed(1) + ' %' : '—')
+            + (el.type === 'VREG' ? row('설정', `${F(+el.params.vout, 'V')} · 드롭아웃 ${F(+el.params.vdo, 'V')} · 한계 ${F(+el.params.ilim, 'A')}`) : row('설정', `${F(+el.params.vout, 'V')} · 효율 ${Math.round((+el.params.eff || 0) * 100)} % · UVLO ${F(+el.params.uvlo, 'V')}`));
+          break;
+        case 'ACDC':
+          rows = row('상태', inf.on ? '동작 중' : '꺼짐 (입력 부족)') + row('입력 첨두 전압', F(inf.vpk, 'V')) + row('출력', `${F(inf.vout, 'V')} · ${F(inf.i, 'A')}`) + row('출력 전력', F(inf.pout, 'W')) + row('입력 전력', F(inf.pin, 'W'));
+          break;
+        case 'BUCK': case 'BOOST':
+          rows = row('스위치', inf.on ? 'ON' : 'OFF') + row('듀티비', (inf.duty * 100).toFixed(1) + ' %') + row('첨두 전류 명령', F(inf.ipk, 'A'))
+            + row('VIN', F(inf.vin, 'V')) + row('SW', F(inf.vsw, 'V')) + row('FB', `${F(inf.vfb, 'V')} (기준 ${F(+el.params.vref, 'V')})`) + row('스위칭 주파수', F(+el.params.fsw, 'Hz'));
+          break;
+        case 'TL431':
+          rows = row('REF − A', F(inf.vref, 'V')) + row('K − A', F(inf.vka, 'V')) + row('흡수 전류', F(inf.i, 'A')) + '<div class="muted">REF 가 2.495 V 가 되도록 전류를 흘려 넣는다</div>';
           break;
         case 'G':
           rows = row('전압', '0 V');
@@ -1315,7 +1383,7 @@
           return;
         }
         const [cx, cy] = d.d.center;
-        const r = h.el.type === 'OA' ? 46 : h.el.type === 'X' ? 50 : h.el.type === 'RLY' ? 60 : CS.TYPES[h.el.type].kind === '2' ? Math.max(20, geom2(h.el).B / 2 + 10) : 30;
+        const r = h.el.type === 'OA' ? 46 : h.el.type === 'X' ? 50 : h.el.type === 'RLY' || PWR_BOX[h.el.type] ? 60 : CS.TYPES[h.el.type].kind === '2' ? Math.max(20, geom2(h.el).B / 2 + 10) : 30;
         g.innerHTML = `<circle class="hl-el" cx="${cx}" cy="${cy}" r="${r}"/>`;
       }
     }
