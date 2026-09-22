@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>samCircuitSim · 혼합 신호 회로 시뮬레이터</title>
+  <meta name="description" content="아날로그와 디지털 부품을 한 회로에 섞어 설계하고 바로 시뮬레이션하는 웹 회로 시뮬레이터">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&display=swap">
+  <link rel="stylesheet" href="css/style.css">
+  <link rel="stylesheet" href="css/circuit.css">
+  <link rel="stylesheet" href="css/simulator.css">
+</head>
+<body class="sim-page">
+  <div id="app" class="sim-app">
+    <header class="sim-top">
+      <a class="brand-logo" href="./" title="samCircuitSim">⚡</a>
+      <div class="sim-title"><b>samCircuitSim</b><span id="circName" class="muted" title="회로 이름 — 눌러서 바꾸기">새 회로</span></div>
+      <div class="tb-group">
+        <button class="btn small ghost" data-cmd="new" title="새 회로">📄 새로</button>
+        <button class="btn small ghost" data-cmd="open" title="예제 · 저장한 회로 열기 (Ctrl+O)">📂 열기</button>
+        <button class="btn small ghost" data-cmd="save" title="이 브라우저에 저장 (Ctrl+S)">💾 저장</button>
+        <button class="btn small ghost" data-cmd="text" title="회로 텍스트 보기 · 편집 · 파일 내보내기 · 가져오기">📝 텍스트</button>
+        <button class="btn small ghost" data-cmd="share" title="회로를 담은 주소 복사">🔗 공유</button>
+        <button class="btn small ghost" data-cmd="image" title="회로도를 그림(SVG · PNG)으로 저장">🖼 그림</button>
+      </div>
+      <div class="tb-group">
+        <button class="btn small ghost" data-cmd="undo" title="되돌리기 (Ctrl+Z)">↶</button>
+        <button class="btn small ghost" data-cmd="redo" title="다시 하기 (Ctrl+Y)">↷</button>
+        <button class="btn small ghost" data-cmd="rot" title="회전 (R) — 선택이 없으면 다음에 놓을 방향">⟳</button>
+        <button class="btn small ghost" data-cmd="flip" title="뒤집기 (F)">⇅</button>
+        <button class="btn small ghost" data-cmd="del" title="삭제 (Delete)">🗑</button>
+      </div>
+      <div class="tb-group">
+        <button class="btn small ghost" data-cmd="zoomout" title="축소 (−)">−</button>
+        <button class="btn small ghost" data-cmd="fit" title="회로 전체 보기 (0)">⤢</button>
+        <button class="btn small ghost" data-cmd="zoomin" title="확대 (+)">+</button>
+      </div>
+      <span class="spacer"></span>
+      <span class="legend" title="도선 색"><span><i style="background:linear-gradient(90deg,#2563eb,#8c929e,#e63946)"></i>아날로그 전압</span><span><i style="background:var(--lv1)"></i>논리 1</span><span><i style="background:var(--lv0)"></i>논리 0</span></span>
+      <button class="btn small ghost" data-cmd="settings" title="시뮬레이션 설정 (시간 간격 · 속도 · 논리 전압 · 기호)">⚙ 설정</button>
+      <button class="btn small ghost" data-cmd="help" title="사용법">❔ 도움말</button>
+      <button class="icon-btn" data-cmd="inst" title="계측기 창 보이기 / 숨기기">🔬</button>
+      <button id="themeBtn" class="icon-btn" title="라이트/다크 전환">◐</button>
+    </header>
+
+    <aside class="sim-left">
+      <div class="tools">
+        <button class="tool active" data-tool="select" title="선택 · 이동 (V)">↖ 선택</button>
+        <button class="tool" data-tool="W" title="도선 긋기 (W) — 끌어서 긋기">╱ 도선</button>
+        <button class="tool" data-tool="pan" title="화면 이동 (Space+끌기, 가운데/오른쪽 버튼 끌기)">✋ 이동</button>
+      </div>
+      <input id="palSearch" class="pal-search" type="search" placeholder="부품 찾기 (예: 저항, AND, 555, 카운터)" spellcheck="false">
+      <div id="palette" class="palette"></div>
+      <div class="pp-title">🔧 속성</div>
+      <div id="props" class="props"></div>
+    </aside>
+
+    <main class="sim-center">
+      <div id="canvas" class="sim-canvas"></div>
+      <div class="sim-status"><span id="stTool">↖ 선택</span><span class="spacer"></span><span id="stInfo" class="muted"></span><span id="stCursor" class="mono"></span></div>
+    </main>
+    <div class="gutter" data-resize="out" title="드래그하여 너비 조절"></div>
+    <aside id="output" class="pane output instruments">
+      <div id="consolePanel" class="instrument-panel"></div>
+    </aside>
+  </div>
+
+  <div id="modal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-card">
+      <div class="modal-head"><b id="modalTitle"></b><span class="spacer"></span><button id="modalClose" class="icon-btn" aria-label="닫기">✕</button></div>
+      <div id="modalBody" class="modal-body"></div>
+    </div>
+  </div>
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="js/util.js"></script>
+  <script src="js/sim/analog.js"></script>
+  <script src="js/sim/digital.js"></script>
+  <script src="js/sim/engine.js"></script>
+  <script src="js/sim/view.js"></script>
+  <script src="js/sim/instruments.js"></script>
+  <script src="js/sim/editor.js"></script>
+  <script src="js/examples.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,370 @@
+/* ===================================================================
+   회로도 · 계측기 (오실로스코프 · 멀티미터) 스타일
+   =================================================================== */
+:root {
+  --sch-fg: #1f2937;
+  --sch-bg: #ffffff;
+  --sch-wire: #5b6472;
+  --sch-grid: #d5dbe5;
+  --sch-label: #334155;
+  --sch-value: #0f766e;
+  --sch-dot: #f59e0b;
+  --sch-probe: #7c3aed;
+  --sch-junc: #1f2937;
+}
+:root[data-theme="dark"] {
+  --sch-fg: #e5e9f0;
+  --sch-bg: #151b24;
+  --sch-wire: #9aa4b5;
+  --sch-grid: #2a3340;
+  --sch-label: #cbd5e1;
+  --sch-value: #5eead4;
+  --sch-dot: #ffd60a;
+  --sch-probe: #c4b5fd;
+  --sch-junc: #e5e9f0;
+}
+
+/* ---------------------------------------------------------------- 회로도 */
+.cv { position: relative; width: 100%; height: 100%; background: var(--sch-bg); user-select: none; -webkit-user-select: none; overflow: hidden; }
+.cv-svg { width: 100%; height: 100%; display: block; touch-action: none; font-family: var(--sans); overflow: visible; }
+.cv .sb { fill: none; stroke: var(--sch-fg); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.cv .sb.thick { stroke-width: 3.4; }
+.cv .sb.thin { stroke-width: 1.4; }
+.cv .sf { fill: var(--sch-fg); stroke: none; }
+.cv .sf-soft { fill: var(--sch-fg); fill-opacity: .88; stroke: var(--sch-fg); stroke-width: 1.5; stroke-linejoin: round; }
+.cv .sf-dark { fill: var(--sch-fg); }
+.cv .pm { fill: var(--sch-fg); font-size: 15px; font-weight: 800; }
+.cv .pm.small { font-size: 12px; }
+.cv .pin-t { fill: var(--muted); font-size: 10px; font-weight: 700; }
+.cv .meter-t { fill: var(--sch-fg); font-size: 16px; font-weight: 800; }
+.cv .wire, .cv .lead { stroke: var(--sch-wire); stroke-width: 3; stroke-linecap: round; }
+.cv .dot { stroke: var(--sch-dot); stroke-width: 5.2; stroke-linecap: round; stroke-dasharray: .1 16; pointer-events: none; }
+.cv .junc { fill: var(--sch-junc); }
+.cv .open-pin { fill: var(--sch-bg); stroke: #ef4444; stroke-width: 1.6; }
+.cv .grid-dot { fill: var(--sch-grid); }
+.cv .lbl { fill: var(--sch-label); font-size: 13.5px; font-weight: 700; paint-order: stroke; stroke: var(--sch-bg); stroke-width: 4px; stroke-linejoin: round; }
+.cv .lbl tspan + tspan { fill: var(--sch-value); font-weight: 600; }
+.cv .probe-dot { fill: var(--sch-probe); stroke: var(--sch-bg); stroke-width: 1.5; }
+.cv .probe-t { fill: var(--sch-probe); font-size: 15px; font-weight: 800; paint-order: stroke; stroke: var(--sch-bg); stroke-width: 4px; }
+.cv .sch-text { fill: var(--sch-label); font-weight: 600; }
+.cv .live { font-family: var(--mono); font-size: 12.5px; font-weight: 700; paint-order: stroke; stroke: var(--sch-bg); stroke-width: 4px; }
+.cv .meter-live { fill: #dc2626; }
+:root[data-theme="dark"] .cv .meter-live { fill: #ff8a80; }
+.cv .probe-live { fill: var(--sch-value); }
+.cv .hl-node { stroke: #38bdf8; stroke-width: 9; stroke-opacity: .35; stroke-linecap: round; pointer-events: none; }
+.cv .hl-pt { fill: #38bdf8; fill-opacity: .55; pointer-events: none; }
+.cv .hl-el { fill: #38bdf8; fill-opacity: .08; stroke: #38bdf8; stroke-width: 2; stroke-dasharray: 4 4; pointer-events: none; }
+.cv .mark-t { fill: #111; font: 800 11px var(--mono); }
+.cv .mark { pointer-events: none; }
+.cv .t-S, .cv .t-PB, .cv .t-SPDT { cursor: pointer; }
+.cv .glow { filter: blur(6px); pointer-events: none; transition: opacity .08s; }
+.cv.picking .cv-svg { cursor: crosshair !important; }
+.cv-tip {
+  position: absolute; z-index: 20; pointer-events: none; min-width: 150px; max-width: 280px; padding: 8px 11px; border-radius: 9px;
+  background: rgba(17, 24, 39, .94); color: #e5e7eb; font-size: 12.5px; line-height: 1.5; box-shadow: 0 8px 24px rgba(0, 0, 0, .3);
+}
+.cv-tip b { color: #fff; }
+.cv-tip .muted { color: #9ca3af; font-weight: 500; }
+.cv-tip .big { font: 800 20px var(--mono); color: #fde047; }
+.cv-tip .row { display: flex; justify-content: space-between; gap: 14px; font-family: var(--mono); font-size: 12px; }
+.cv-tip .row span { color: #9ca3af; font-family: var(--sans); }
+.cv-tip .row b { color: #fde047; font-weight: 700; }
+.cv-pickmsg {
+  position: absolute; left: 50%; top: 8px; transform: translateX(-50%); z-index: 21; background: #0ea5e9; color: #fff; font-weight: 700; font-size: 13px;
+  padding: 5px 14px; border-radius: 20px; box-shadow: 0 4px 14px rgba(14, 165, 233, .4); pointer-events: none; white-space: nowrap;
+}
+
+.cv-menu { position: fixed; z-index: 3000; min-width: 200px; background: #161b22; border: 1px solid #30363d; border-radius: 10px; padding: 4px; box-shadow: 0 12px 32px rgba(0, 0, 0, .4); display: flex; flex-direction: column; }
+.cv-menu-h { font-size: 11.5px; font-weight: 800; color: #7d8799; padding: 4px 10px 2px; }
+.cv-menu button { text-align: left; background: transparent; border: none; color: #e6edf3; padding: 6px 10px; border-radius: 7px; cursor: pointer; font-size: 13px; font-family: var(--sans); }
+.cv-menu button:hover { background: #1f6feb; }
+.cv-menu-h.sep { border-top: 1px solid #30363d; margin-top: 4px; padding-top: 6px; }
+.cv-menu button.off { color: #ffa198; }
+.cv-menu button.off:hover { background: #8e1519; color: #fff; }
+.sc-x { padding: 3px 6px; }
+.sc-x:hover { border-color: #f85149 !important; color: #f85149; }
+.dmm-x { border: 1px solid #30363d; background: #0d1117; color: #c9d1d9; border-radius: 7px; padding: 4px 8px; cursor: pointer; font-weight: 700; font-size: 12px; white-space: nowrap; }
+.dmm-x:hover { border-color: #f85149; color: #f85149; }
+
+/* ---------------------------------------------------------------- 문서 속 회로 카드 */
+.circuit-block { margin: 18px 0; border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; background: var(--card); box-shadow: var(--shadow); }
+.circuit-block.active { border-color: #0ea5e9; box-shadow: 0 0 0 3px rgba(14, 165, 233, .15), var(--shadow); }
+.cb-head { display: flex; align-items: center; gap: 6px; padding: 7px 10px 7px 14px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.cb-head .t { flex: 1; min-width: 180px; font-weight: 700; font-size: 14px; }
+.cb-head .t .tag { font: 600 11px var(--mono); color: #0ea5e9; background: color-mix(in srgb, #0ea5e9 14%, transparent); border-radius: 5px; padding: 1px 6px; margin-right: 6px; vertical-align: 1px; }
+.cb-stage { position: relative; height: var(--cb-h, 300px); background: var(--sch-bg); cursor: default; }
+.cb-stage .cb-cover {
+  position: absolute; inset: 0; display: grid; place-items: center; background: transparent; z-index: 5; cursor: pointer;
+}
+.cb-stage .cb-cover span {
+  background: rgba(14, 165, 233, .92); color: #fff; font-weight: 700; padding: 7px 16px; border-radius: 20px; font-size: 13.5px;
+  box-shadow: 0 4px 14px rgba(14, 165, 233, .35); opacity: .0; transition: opacity .15s;
+}
+.cb-stage:hover .cb-cover span { opacity: 1; }
+.circuit-block.active .cb-cover { display: none; }
+.cb-controls { display: flex; flex-wrap: wrap; gap: 8px 16px; padding: 8px 14px; border-top: 1px dashed var(--line); background: var(--card2); font-size: 13px; }
+.cb-controls:empty { display: none; }
+.cb-slider { display: flex; align-items: center; gap: 8px; min-width: 220px; flex: 1; }
+.cb-slider b { white-space: nowrap; font-size: 12.5px; }
+.cb-slider input { flex: 1; min-width: 90px; accent-color: #0ea5e9; }
+.cb-slider .v { font: 700 12.5px var(--mono); color: var(--sch-value); min-width: 64px; text-align: right; }
+.cb-desc { padding: 10px 16px; border-top: 1px solid var(--line); font-size: 14px; }
+.cb-desc p:first-child { margin-top: 0; }
+.cb-desc p:last-child { margin-bottom: 0; }
+.cb-mini { height: 190px; border-top: 1px solid var(--line); background: #071410; }
+.cb-err { padding: 8px 14px; color: var(--danger); font-size: 13px; background: var(--danger-soft); }
+.btn.on { border-color: #0ea5e9; color: #0ea5e9; }
+
+/* ---------------------------------------------------------------- 수식 */
+.formula { margin: 14px 0; padding: 12px 18px; text-align: center; font-size: 20px; font-weight: 700; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); font-family: 'Cambria Math', 'Times New Roman', serif; letter-spacing: .01em; }
+.formula .fx-note { display: block; font: 500 13px var(--sans); color: var(--muted); margin-top: 4px; }
+.formula i { font-style: italic; }
+
+/* ---------------------------------------------------------------- 계측기 패널 */
+.instrument-panel { display: flex; flex-direction: column; height: 100%; min-height: 0; background: #0d1117; color: #d7dde8; }
+.ip-head { display: flex; align-items: center; gap: 8px; padding: 9px 12px; background: #161b22; border-bottom: 1px solid #262c36; }
+.ip-title { font-weight: 800; font-size: 13.5px; color: #e6edf3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.ip-title .muted { color: #7d8799; font-weight: 500; }
+.ip-time { font: 600 11.5px var(--mono); color: #7ee787; white-space: nowrap; }
+.ip-sim { display: flex; align-items: center; gap: 5px; padding: 6px 10px; background: #12171e; border-bottom: 1px solid #262c36; flex-wrap: wrap; }
+.ip-sim .btn { background: transparent; color: #c9d1d9; border-color: #30363d; }
+.ip-sim .btn:hover { border-color: #58a6ff; }
+.ip-sim .btn.on { border-color: #38bdf8; color: #38bdf8; }
+.ip-speed { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: #9aa4b5; }
+.ip-speed input { width: 74px; accent-color: #38bdf8; }
+.ip-speed span { font: 700 11.5px var(--mono); min-width: 30px; }
+.ip-fs { display: none !important; }
+.slide-view.is-full .ip-fs { display: inline-flex !important; }
+.ip-body { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 10px; }
+.ip-card { background: #151b23; border: 1px solid #262c36; border-radius: 10px; overflow: hidden; }
+.ip-card-h { font-size: 12.5px; font-weight: 800; color: #9fb0c8; padding: 6px 10px; border-bottom: 1px solid #262c36; background: #11161d; }
+.ip-help { font-size: 12px; line-height: 1.55; color: #7d8799; padding: 2px 4px 10px; }
+.ip-help b { color: #c9d1d9; }
+.ip-probes { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 6px; padding: 8px 10px; font-size: 12.5px; }
+.ip-pr { display: flex; justify-content: space-between; gap: 6px; background: #0d1117; border: 1px solid #262c36; border-radius: 7px; padding: 4px 8px; }
+.ip-pr b { color: #c4b5fd; }
+.ip-pr span { font: 700 12.5px var(--mono); color: #5eead4; }
+
+/* 멀티미터 */
+.dmm { padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+.dmm-lcd {
+  display: flex; align-items: baseline; gap: 8px; padding: 10px 14px; border-radius: 8px; background: linear-gradient(#b8c9a3, #a7bb8f); color: #1d2a12;
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, .35); font-family: var(--mono);
+}
+.dmm-mode { font-size: 11px; font-weight: 800; align-self: flex-start; opacity: .8; min-width: 62px; }
+.dmm-val { flex: 1; text-align: right; font-size: 30px; font-weight: 800; letter-spacing: .02em; }
+.dmm-unit { font-size: 16px; font-weight: 800; min-width: 28px; }
+.dmm-modes { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; }
+.dmm-modes button, .dmm-p {
+  border: 1px solid #30363d; background: #0d1117; color: #c9d1d9; border-radius: 7px; padding: 4px 6px; cursor: pointer; font-weight: 700; font-size: 13px;
+}
+.dmm-modes button.active { background: #f59e0b; border-color: #f59e0b; color: #111; }
+.dmm-probes { display: flex; gap: 6px; flex-wrap: wrap; }
+.dmm-p { flex: 1; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: left; }
+.dmm-p:hover, .dmm-modes button:hover { border-color: #58a6ff; }
+
+/* 오실로스코프 */
+.scope { display: flex; flex-direction: column; }
+.sc-screen { position: relative; aspect-ratio: 10 / 8; background: #071410; border-bottom: 1px solid #262c36; }
+.sc-screen canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.sc-over { position: absolute; left: 6px; right: 6px; top: 4px; display: flex; justify-content: space-between; font: 700 11px var(--mono); color: rgba(160, 230, 200, .85); pointer-events: none; }
+.sc-st { color: #7ee787; }
+.sc-ctl { display: flex; flex-direction: column; gap: 5px; padding: 8px; }
+.sc-ch, .sc-row { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+.sc-ch.off { opacity: .55; }
+.sc-chbtn { background: var(--cc); color: #111; border: none; border-radius: 6px; padding: 3px 8px; font: 800 12px var(--mono); cursor: pointer; }
+.sc-ch.off .sc-chbtn { background: #30363d; color: #9aa4b5; }
+.sc-src { flex: 1; min-width: 90px; text-align: left; background: #0d1117; border: 1px solid #30363d; border-left: 3px solid var(--cc); color: #c9d1d9; border-radius: 6px; padding: 3px 8px; cursor: pointer; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sc-src:hover { border-color: #58a6ff; }
+.sc-knob { display: inline-flex; align-items: center; border: 1px solid #30363d; border-radius: 6px; overflow: hidden; background: #0d1117; }
+.sc-knob button { background: transparent; border: none; color: #c9d1d9; width: 22px; height: 24px; cursor: pointer; font-weight: 800; font-size: 12px; }
+.sc-knob button:hover { background: #1f2937; }
+.sc-knob span { font: 700 11.5px var(--mono); min-width: 52px; text-align: center; color: #e6edf3; }
+.sc-cpl, .sc-small { background: #0d1117; border: 1px solid #30363d; color: #c9d1d9; border-radius: 6px; padding: 3px 8px; cursor: pointer; font-size: 11.5px; font-weight: 700; white-space: nowrap; }
+.sc-cpl:hover, .sc-small:hover { border-color: #58a6ff; }
+.sc-small.on { border-color: #7ee787; color: #7ee787; }
+.sc-lab { font-size: 11.5px; color: #7d8799; font-weight: 700; margin-left: 2px; }
+.sc-meas { padding: 6px 8px 8px; display: flex; flex-direction: column; gap: 4px; }
+.sc-mrow { display: flex; flex-wrap: wrap; gap: 2px 10px; font-size: 11.5px; color: #9aa4b5; border-left: 3px solid var(--cc, #30363d); padding-left: 7px; }
+.sc-mrow b { color: var(--cc); font-family: var(--mono); }
+.sc-mrow i { font-style: normal; font-family: var(--mono); color: #e6edf3; font-weight: 700; }
+.scope.compact .sc-screen { aspect-ratio: auto; flex: 1; min-height: 0; border: none; }
+.scope.compact { height: 100%; }
+.scope.compact .sc-meas { padding: 4px 8px; background: #0b1512; }
+.scope.compact .sc-mrow { font-size: 11px; }
+
+/* 오른쪽 창 (계측기) */
+.output.instruments { background: #0d1117; }
+
+/* ---------------------------------------------------------------- 슬라이드 속 회로 */
+
+/* ================================================================ 디지털 부품 (디지털 공학 강좌에서) */
+.cv .gate-body, .cv .box-body { fill: var(--sch-body); }
+.cv .sb.bub { fill: var(--sch-body); stroke-width: 2; }
+.cv .iec-t { fill: var(--sch-fg); font: 800 15px var(--sans); }
+.cv .box-title { fill: var(--sch-fg); font: 800 12px var(--sans); }
+.cv .pin-t { fill: var(--sch-label); font: 700 10.5px var(--mono); }
+.cv .ovl { text-decoration: overline; }
+.cv .wire.v1, .cv .lead.v1 { stroke: var(--lv1); }
+.cv .wire.v0, .cv .lead.v0 { stroke: var(--lv0); }
+.cv .wire.vx, .cv .lead.vx { stroke: var(--lvx); }
+.cv .wire.vz, .cv .lead.vz { stroke: var(--lvz); stroke-dasharray: 5 5; }
+.cv .wire.conf, .cv .lead.conf { animation: conf .5s steps(2) infinite; }
+@keyframes conf { 50% { stroke: #fbbf24; } }
+.cv .still .wire, .cv .still .lead, .cv-svg.still .wire, .cv-svg.still .lead { stroke: var(--sch-fg); stroke-width: 2.4; }
+.cv .junc { fill: var(--sch-wire); }
+.cv .junc.v1 { fill: var(--lv1); } .cv .junc.v0 { fill: var(--lv0); } .cv .junc.vx { fill: var(--lvx); } .cv .junc.vz { fill: var(--lvz); }
+.cv-svg.still .junc { fill: var(--sch-fg); }
+.cv .tunnel { fill: var(--sch-body); stroke: var(--sch-probe); stroke-width: 1.6; }
+.cv .tunnel-t { fill: var(--sch-probe); font: 800 11.5px var(--mono); }
+.cv .hl-node { stroke: #38bdf8; stroke-width: 9; stroke-opacity: .35; stroke-linecap: round; pointer-events: none; }
+.cv .hl-pt { fill: #38bdf8; fill-opacity: .55; pointer-events: none; }
+
+/* 입력 장치 */
+.cv .t-SW, .cv .t-BTN, .cv .t-CLK, .cv .t-DIP { cursor: pointer; }
+.cv .sw-pill { fill: var(--sw-off); stroke: var(--sch-fg); stroke-width: 1.6; transition: fill .12s; }
+.cv .sw-knob { fill: #fff; stroke: var(--sch-fg); stroke-width: 1.6; transition: transform .12s; }
+.cv .t-SW.on .sw-pill { fill: var(--lv1); }
+.cv .t-SW.on .sw-knob { transform: translateX(18px); }
+.cv .pb-frame { fill: var(--sch-body); stroke: var(--sch-fg); stroke-width: 1.6; }
+.cv .pb-cap { fill: #ef4444; stroke: #7f1d1d; stroke-width: 1.6; }
+.cv .t-BTN.on .pb-cap { fill: #fca5a5; transform: translate(-36px, 0) scale(.86) translate(36px, 0); }
+.cv .clk-box { fill: var(--sch-body); stroke: var(--sch-fg); stroke-width: 1.8; }
+.cv .clk-wave { stroke: var(--sch-fg); stroke-width: 1.8; stroke-linejoin: round; }
+.cv .t-CLK.on .clk-box { fill: color-mix(in srgb, var(--lv1) 30%, var(--sch-body)); }
+.cv .t-CLK.paused .clk-wave { stroke: var(--muted); stroke-dasharray: 3 3; }
+.cv .dip-body { fill: #b91c1c; stroke: var(--sch-fg); stroke-width: 1.4; }
+.cv .dip-sw { fill: #f8fafc; stroke: #7f1d1d; stroke-width: 1; }
+.cv .dip-knob { fill: #475569; transition: x .1s; }
+.cv .dip-knob.on { fill: var(--lv1); }
+.cv .adc-v { fill: var(--sch-value); font: 700 12px var(--mono); }
+
+/* 표시 장치 */
+.cv .led { fill: color-mix(in srgb, var(--lc) 18%, #444); stroke: var(--sch-fg); stroke-width: 1.6; transition: fill .05s; }
+.cv .led-glow { fill: var(--lc); opacity: 0; filter: blur(6px); pointer-events: none; }
+.cv .t-DLED.on .led { fill: var(--lc); }
+.cv .t-DLED.on .led-glow { opacity: .75; }
+.cv .t-DLED.bad .led { fill: repeating-linear-gradient(45deg, #f00, #000); stroke: var(--lvx); stroke-dasharray: 3 2; }
+.cv .ledbar-body { fill: #1f2937; stroke: var(--sch-fg); stroke-width: 1.4; }
+.cv .seg-led { stroke-width: 1; }
+.cv .seg-led.lit { fill: var(--lc); filter: drop-shadow(0 0 3px var(--lc)); }
+.cv .seg-led.bad { stroke: var(--lvx); }
+.cv .disp-body { fill: #1a0f0f; stroke: var(--sch-fg); stroke-width: 1.8; }
+.cv .hex-digit { fill: #ff3b30; font: 800 62px var(--mono); filter: drop-shadow(0 0 4px rgba(255, 59, 48, .7)); }
+.cv .t-HEX.bad .hex-digit { fill: #7f1d1d; filter: none; }
+.cv .seg { fill: #3a1717; transition: fill .05s; }
+.cv .seg.lit { fill: #ff3b30; filter: drop-shadow(0 0 3px rgba(255, 59, 48, .8)); }
+.cv .seg.bad { fill: #7c2d12; }
+.cv .dac-track { fill: #0b1220; stroke: var(--sch-fg); stroke-width: 1; }
+.cv .dac-bar { fill: #f59e0b; }
+.cv .dac-v { fill: var(--sch-value); font: 800 13px var(--mono); }
+
+/* 입력 · 출력 */
+.io-body { padding: 6px 10px 10px; display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; }
+.io-h { font-size: 11px; font-weight: 800; color: #6b7587; letter-spacing: .04em; margin-top: 2px; }
+.io-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.io-n { color: #e6edf3; min-width: 44px; font-family: var(--mono); }
+.io-tog { width: 46px; height: 24px; border-radius: 99px; border: 1px solid #30363d; background: #1f2937; color: #9aa4b5; font: 800 12px var(--mono); cursor: pointer; }
+.io-tog.on { background: #16a34a; color: #fff; border-color: #22c55e; }
+.io-pb { background: #7f1d1d; color: #fff; border: 1px solid #b91c1c; border-radius: 7px; padding: 3px 10px; font-weight: 700; font-size: 12px; cursor: pointer; }
+.io-pb:active { background: #ef4444; }
+.io-bits { display: inline-flex; gap: 2px; }
+.io-bit { width: 22px; height: 24px; border-radius: 5px; border: 1px solid #30363d; background: #1f2937; color: #9aa4b5; font: 800 12px var(--mono); cursor: pointer; }
+.io-bit.on { background: #16a34a; color: #fff; }
+.io-v { font: 700 12px var(--mono); color: #5eead4; }
+.io-fs { display: inline-flex; flex-wrap: wrap; gap: 2px; }
+.io-row input[type=range] { flex: 1; min-width: 80px; accent-color: #f59e0b; }
+.io-outs { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 5px; }
+.io-out { display: flex; justify-content: space-between; gap: 6px; background: #0d1117; border: 1px solid #262c36; border-radius: 7px; padding: 3px 8px; }
+.io-out b { color: #e6edf3; font-family: var(--mono); font-size: 12px; }
+.io-out.probe b { color: #c4b5fd; }
+.lv { font: 800 12.5px var(--mono); }
+.lv0 { color: #94a3b8; } .lv1 { color: #4ade80; } .lv2 { color: #f87171; } .lv3 { color: #60a5fa; }
+.io-num { font: 700 12px var(--mono); color: #fde047; }
+
+/* 로직 분석기 */
+.la-screen { position: relative; height: 150px; background: #060b10; }
+.la-screen canvas { position: absolute; inset: 0; width: 100%; height: 100%; cursor: crosshair; }
+.la-read { position: absolute; left: 66px; top: 2px; right: 4px; font: 600 11px var(--mono); color: #e6edf3; pointer-events: none; white-space: nowrap; overflow: hidden; text-shadow: 0 1px 2px #000; }
+.la-chans { display: flex; flex-wrap: wrap; gap: 4px; padding: 6px 8px 8px; align-items: center; }
+.la-ch { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; }
+.la-ch > b { color: var(--cc); font-family: var(--mono); }
+.la-ch .sc-src { max-width: 96px; }
+.la-x { background: transparent; border: none; color: #6b7587; cursor: pointer; font-size: 11px; padding: 0 2px; }
+.la-x:hover { color: #f87171; }
+
+/* 로직 프로브 */
+.lp { display: flex; align-items: center; gap: 6px; padding: 8px 10px; flex-wrap: wrap; }
+.lp-src { flex: 1; min-width: 110px; max-width: none; }
+.lp-led { font: 800 10.5px var(--mono); padding: 3px 7px; border-radius: 99px; background: #1f2937; color: #6b7587; border: 1px solid #30363d; }
+.lp-led.hi.on { background: #ef4444; color: #fff; box-shadow: 0 0 10px #ef4444; }
+.lp-led.lo.on { background: #22c55e; color: #fff; box-shadow: 0 0 10px #22c55e; }
+.lp-led.pu.on { background: #facc15; color: #111; box-shadow: 0 0 10px #facc15; }
+.lp-val { font: 800 13px var(--mono); color: #e6edf3; min-width: 60px; text-align: right; }
+
+/* 진리표 */
+.tt-wrap { max-height: 260px; overflow: auto; }
+table.tt { width: 100%; border-collapse: collapse; font: 700 12px var(--mono); }
+table.tt th, table.tt td { padding: 2px 6px; text-align: center; border-bottom: 1px solid #1f2733; }
+table.tt th { position: sticky; top: 0; background: #11161d; color: #9fb0c8; }
+table.tt th.to, table.tt td.to { background: rgba(74, 222, 128, .05); }
+table.tt td.ti { color: #c9d1d9; }
+table.tt td.to { color: #fde047; }
+table.tt td.v1 { color: #4ade80; }
+table.tt td.v0 { color: #94a3b8; }
+table.tt tr.cur td { background: rgba(56, 189, 248, .25); }
+
+/* 내부 상태 */
+.st-body { padding: 6px 10px 10px; display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; }
+.st-body:empty::before { content: '–'; color: #6b7587; }
+.st-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.st-row b { color: #e6edf3; font-family: var(--mono); }
+.st-row .muted { color: #6b7587; font-size: 11.5px; }
+.mem-grid { display: inline-flex; flex-wrap: wrap; gap: 2px; max-width: 220px; }
+.mem-grid i { font: 700 11px var(--mono); font-style: normal; background: #0d1117; border: 1px solid #262c36; border-radius: 4px; padding: 0 4px; color: #a5f3fc; }
+.mem-grid i.cur { border-color: #facc15; color: #facc15; }
+
+
+/* ================================================================ 혼합 신호 시뮬레이터 추가 */
+:root {
+  --sch-body: #fbfcfe;
+  --lv1: #16a34a;
+  --lv0: #1e3a2c;
+  --lvx: #dc2626;
+  --lvz: #2563eb;
+  --sw-off: #cbd5e1;
+}
+:root[data-theme="dark"] {
+  --sch-body: #18202b;
+  --lv1: #4ade80;
+  --lv0: #2f6b45;
+  --lvx: #f87171;
+  --lvz: #60a5fa;
+  --sw-off: #3b4556;
+}
+/* 아날로그 스위치 · 릴레이 접점 */
+.cv .sw-on { display: none; }
+.cv .part.on .sw-on { display: inline; }
+.cv .part.on .sw-off { display: none; }
+.cv .t-T555.on .box-body { fill: color-mix(in srgb, var(--lv1) 14%, var(--sch-body)); }
+.cv .t-CMPR.on .gate-body { fill: color-mix(in srgb, var(--lv1) 14%, var(--sch-body)); }
+.cv .probe-live.v1 { fill: var(--lv1); } .cv .probe-live.v0 { fill: var(--sch-label); } .cv .probe-live.vx { fill: var(--lvx); } .cv .probe-live.vz { fill: var(--lvz); }
+.cv .lbl .nm { fill: var(--muted); font-weight: 600; }
+.cv .box-lbl { font-size: 12.5px; }
+.cv-warn { position: absolute; left: 8px; bottom: 8px; z-index: 5; background: rgba(220, 38, 38, .92); color: #fff; font-size: 12px; font-weight: 700; border-radius: 7px; padding: 3px 9px; pointer-events: none; }
+.cv-tip .big.v1 { color: #4ade80; } .cv-tip .big.v0 { color: #94a3b8; } .cv-tip .big.vx { color: #f87171; } .cv-tip .big.vz { color: #60a5fa; }
+.cv-tip .lvt.v1 { color: #4ade80; } .cv-tip .lvt.v0 { color: #94a3b8; }
+.cv-tip .mem { font: 600 11px var(--mono); color: #a5f3fc; word-break: break-all; margin: 3px 0; }
+.cv-tip sub { font-size: 9px; }
+/* 부품 목록 아이콘 (시뮬레이션 색 없이) */
+.pal-item svg .wire, .pal-item svg .lead, .cv .ghost .lead { stroke: var(--sch-fg); stroke-width: 2.4; }
+.pal-item svg .junc { fill: var(--sch-fg); }
+/* 계측기 카드 접기 */
+.ip-card-h { display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
+.ip-card-h .caret { font-size: 10px; color: #6b7587; transition: transform .15s; width: 10px; }
+.ip-card.folded .caret { transform: rotate(-90deg); }
+.ip-card.folded .ip-card-b { display: none; }
+.ip-card.folded .ip-card-h > .sc-small, .ip-card.folded .ip-card-h > .sc-knob { display: none; }
+.ip-card-h .spacer { flex: 1; }
+.ip-mode { font: 600 11px var(--mono); color: #7d8799; margin-left: auto; white-space: nowrap; }
+.ip-sim .hidden { display: none; }

@@ -1,0 +1,6 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    { "name": "samCircuitSim", "runtimeExecutable": "python", "runtimeArgs": ["-m", "http.server", "8947"], "port": 8947 }
+  ]
+}

@@ -1,0 +1,125 @@
+/* ===================================================================
+   회로 시뮬레이터 (simulator.html)
+   =================================================================== */
+.sim-page { overflow: hidden; }
+.sim-app {
+  display: grid; height: 100vh;
+  grid-template-columns: 250px minmax(360px, 1fr) 5px var(--out-w);
+  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-areas: "top top top top" "left center gutter right";
+}
+.sim-top { grid-area: top; display: flex; align-items: center; gap: 8px; padding: 7px 12px; background: var(--pane); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.sim-top .brand-logo { width: 32px; height: 32px; font-size: 18px; border-radius: 9px; }
+.sim-title { display: flex; flex-direction: column; line-height: 1.2; margin-right: 6px; min-width: 110px; }
+.sim-title b { font-size: 15px; }
+.sim-title span { font-size: 12px; cursor: pointer; }
+.tb-group { display: flex; gap: 2px; padding: 0 6px; border-left: 1px solid var(--line); }
+.sim-left { grid-area: left; display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--line); background: var(--pane); }
+.sim-center { grid-area: center; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.sim-app > .gutter { grid-area: gutter; }
+.sim-app > .output { grid-area: right; min-height: 0; }
+.sim-canvas { flex: 1; min-height: 0; position: relative; }
+.sim-canvas .cv { background: var(--sch-bg); }
+.sim-status { display: flex; gap: 10px; padding: 4px 12px; font-size: 12px; color: var(--muted); border-top: 1px solid var(--line); background: var(--pane); }
+.mono { font-family: var(--mono); }
+
+.tools { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 8px 8px 4px; }
+.tool { border: 1px solid var(--line); background: var(--card2); border-radius: 8px; padding: 5px 4px; font-size: 12.5px; font-weight: 700; cursor: pointer; color: var(--fg); }
+.tool:hover { border-color: var(--accent); }
+.tool.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.palette { flex: 1 1 auto; min-height: 120px; overflow-y: auto; padding: 0 8px 8px; }
+.pal-cat { font-size: 11.5px; font-weight: 800; color: var(--muted); margin: 8px 2px 4px; }
+.pal-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+.pal-item { border: 1px solid var(--line); background: var(--sch-bg); border-radius: 8px; padding: 3px 2px 2px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 1px; color: var(--fg); }
+.pal-item:hover { border-color: var(--accent); }
+.pal-item.active { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.pal-item svg { width: 100%; height: 30px; }
+.pal-item span { font-size: 10.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.pal-item kbd { font-size: 9px; padding: 0 3px; }
+.pal-item .cv { background: transparent; }
+
+.pp-title { font-size: 12.5px; font-weight: 800; padding: 6px 12px; border-top: 1px solid var(--line); background: var(--card2); }
+.props { flex: 0 0 auto; max-height: 45%; overflow-y: auto; padding: 8px 10px 12px; font-size: 13px; }
+.pp-empty { color: var(--muted); font-size: 12.5px; line-height: 1.6; }
+.pp-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+.pp-head b { font-size: 15px; }
+.pp-head .muted { font-size: 12px; }
+.pp-rows { display: flex; flex-direction: column; gap: 5px; }
+.pp-row { display: grid; grid-template-columns: 82px 1fr auto; align-items: center; gap: 6px; }
+.pp-row span { font-size: 12px; color: var(--muted); font-weight: 600; }
+.pp-row input[type=text], .pp-row select { width: 100%; min-width: 0; padding: 4px 7px; border: 1px solid var(--line); border-radius: 6px; background: var(--card2); font-family: var(--mono); font-size: 12.5px; }
+.pp-row input.bad { border-color: var(--danger); background: var(--danger-soft); }
+.pp-row i { font-style: normal; font-size: 12px; color: var(--muted); min-width: 14px; }
+.pp-row.chk { grid-template-columns: auto 1fr; }
+.pp-row.chk span { color: var(--fg); }
+.pp-pins { display: flex; flex-wrap: wrap; gap: 3px 8px; margin-top: 8px; font: 11px var(--mono); color: var(--muted); }
+.pp-actions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 10px; }
+
+/* 편집 표시 */
+.cv .sel-line { stroke: #0ea5e9; stroke-width: 12; stroke-opacity: .22; stroke-linecap: round; pointer-events: none; }
+.cv .sel-box { fill: rgba(14, 165, 233, .08); stroke: #0ea5e9; stroke-width: 1.6; stroke-dasharray: 5 4; pointer-events: none; }
+.cv .sel-handle { fill: #fff; stroke: #0ea5e9; stroke-width: 2.4; }
+.cv .sel-rect { fill: rgba(14, 165, 233, .08); stroke: #0ea5e9; stroke-width: 1.2; stroke-dasharray: 4 3; pointer-events: none; }
+.cv .ghost { opacity: .5; pointer-events: none; }
+.cv .ghost-lead { stroke: var(--sch-wire); stroke-width: 3; }
+.cv .ghost-wire { fill: none; stroke: #0ea5e9; stroke-width: 3; stroke-dasharray: 6 5; pointer-events: none; }
+.cv .ghost-pt { fill: none; stroke: #0ea5e9; stroke-width: 2; pointer-events: none; }
+.cv.placing .cv-svg { cursor: crosshair; }
+
+/* 모달 속 목록 */
+.open-tabs { display: flex; gap: 4px; margin-bottom: 10px; flex-wrap: wrap; }
+.open-tabs button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+.open-list { display: grid; gap: 4px; max-height: 58vh; overflow-y: auto; }
+.open-item { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); cursor: pointer; text-align: left; }
+.open-item:hover { border-color: var(--accent); }
+.open-item .t { flex: 1; font-weight: 600; font-size: 13.5px; }
+.open-item .m { font-size: 11.5px; color: var(--muted); }
+.open-ch { font-weight: 800; font-size: 13px; margin: 8px 0 2px; color: var(--accent); }
+.modal-body textarea.circ-text { width: 100%; height: 46vh; font: 13px/1.5 var(--mono); padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--code-bg); color: var(--code-fg); resize: vertical; }
+.help-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 20px; font-size: 13.5px; }
+.help-grid h4 { margin: 4px 0; }
+.help-grid ul { margin: 0; padding-left: 18px; }
+
+@media (max-width: 1100px) {
+  .sim-app { grid-template-columns: 210px minmax(320px, 1fr) 5px 340px; }
+}
+@media (max-width: 860px) {
+  .sim-page { overflow: auto; }
+  .sim-app { grid-template-columns: 1fr; grid-template-rows: auto auto 70vh 0 90vh; grid-template-areas: "top" "left" "center" "gutter" "right"; height: auto; }
+  .sim-left { max-height: 40vh; }
+}
+
+/* ================================================================ 혼합 신호 시뮬레이터 추가 */
+.sim-app.no-inst { grid-template-columns: 250px minmax(360px, 1fr) 0 0; }
+.sim-app.no-inst > .output, .sim-app.no-inst > .gutter { display: none; }
+.pal-search { margin: 4px 8px 6px; width: calc(100% - 16px); padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--card2); color: var(--fg); font-size: 13px; }
+.pal-cat { display: flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; padding: 3px 4px; border-radius: 6px; }
+.pal-cat:hover { background: var(--card2); }
+.pal-cat .caret { font-size: 10px; transition: transform .15s; width: 10px; }
+.pal-cat .n { margin-left: auto; font-weight: 500; }
+.pal-sec.folded .caret { transform: rotate(-90deg); }
+.pal-sec.folded .pal-grid { display: none; }
+.pal-item svg { height: 34px; }
+.pal-empty { color: var(--muted); font-size: 13px; padding: 20px 8px; text-align: center; }
+.pp-row.wide { grid-template-columns: 1fr 110px; }
+.pp-row input[type=number] { width: 100%; min-width: 0; padding: 4px 7px; border: 1px solid var(--line); border-radius: 6px; background: var(--card2); font-family: var(--mono); font-size: 12.5px; }
+.pp-desc { font-size: 12px; color: var(--muted); line-height: 1.5; margin: -2px 0 8px; }
+.pp-head { flex-wrap: wrap; }
+.pp-pins span.pa { color: #dc2626; }
+.pp-pins span.pd { color: #16a34a; }
+:root[data-theme="dark"] .pp-pins span.pa { color: #f87171; }
+:root[data-theme="dark"] .pp-pins span.pd { color: #4ade80; }
+.dom-tag { font: 700 10.5px var(--sans); padding: 1px 7px; border-radius: 99px; margin-left: auto; }
+.dom-tag.a { background: color-mix(in srgb, #ef4444 16%, transparent); color: #dc2626; }
+.dom-tag.d { background: color-mix(in srgb, #22c55e 16%, transparent); color: #16a34a; }
+.brand-logo { display: grid; place-items: center; text-decoration: none; background: linear-gradient(135deg, #0ea5e9, #22c55e); color: #fff; font-weight: 900; }
+.ex-group { font-weight: 800; font-size: 13px; margin: 10px 0 4px; color: var(--accent); }
+.open-item .d { display: block; font-size: 12px; color: var(--muted); font-weight: 500; }
+.open-item .t { display: flex; flex-direction: column; }
+.help-grid code { font-size: 12px; }
+.legend { display: inline-flex; gap: 10px; align-items: center; font-size: 11.5px; color: var(--muted); }
+.legend i { display: inline-block; width: 18px; height: 4px; border-radius: 2px; vertical-align: middle; margin-right: 3px; }
+.sim-status .spacer { flex: 1; }
+.set-tbl td, .set-tbl th { padding: 5px 8px; vertical-align: middle; }
+.set-tbl input[type=text], .set-tbl select { width: 140px; padding: 4px 7px; border: 1px solid var(--line); border-radius: 6px; background: var(--card2); color: var(--fg); font-family: var(--mono); }
+.drop-hint { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(14, 165, 233, .12); border: 3px dashed #0ea5e9; font-weight: 800; color: #0369a1; z-index: 30; pointer-events: none; }
